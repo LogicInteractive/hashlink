@@ -67,3 +67,11 @@ args.txt
 /wasm/sys/
 /wasm/_*/
 /wasm/hlc.json
+
+# But keep test executables for easy testing
+!/wasm/simple.html
+!/wasm/simple.js
+!/wasm/simple.wasm
+!/wasm/standardtimer.html
+!/wasm/standardtimer.js
+!/wasm/standardtimer.wasm
