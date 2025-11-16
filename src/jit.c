@@ -5307,6 +5307,17 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 			break;
 
+		case OGetTID:
+			// dst = *(int*)(ra + 0) - Load type ID from object
+			// Type ID is stored at offset 0 in objects
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				// LDR Wd, [Xn, #0] (load 32-bit type ID)
+				arm_ldr_imm(ctx, rd, rn, 0, 2);  // size=2 for 32-bit
+			}
+			break;
+
 		default:
 			jit_error(hl_op_name(o->op));
 			break;
