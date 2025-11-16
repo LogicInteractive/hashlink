@@ -5010,6 +5010,31 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_eor_reg(ctx, rd, rd, rd, true);
 			}
 			break;
+
+		case OLabel:
+			// Label marks a jump target - no code generated
+			// Just ensure register state is cleared
+			// TODO: Implement discard_regs for ARM64 when needed
+			break;
+
+		case OIncr:
+			// Increment: dst = dst + 1
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+				// ADD rd, rd, #1
+				arm_add_imm(ctx, rd, rd, 1, true);
+			}
+			break;
+
+		case ODecr:
+			// Decrement: dst = dst - 1
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+				// SUB rd, rd, #1
+				arm_sub_imm(ctx, rd, rd, 1, true);
+			}
+			break;
+
 		case ORet:
 			// Return from function
 			if (dst) {
@@ -5114,6 +5139,78 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				jump = arm_do_jump_cond(ctx, cond);
 				register_jump(ctx, jump, (opCount + 1) + o->p3);
+			}
+			break;
+
+		// =====================================================================
+		// Memory Operations
+		// =====================================================================
+
+		case OGetI8:
+			// dst = *(int8*)(ra + rb) - Load byte
+			if (dst && ra && rb) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);  // base address
+				Arm64Reg rm = GET_REG(rb);  // offset
+				// LDRB Wd, [Xn, Xm]
+				arm_ldr_reg(ctx, rd, rn, rm, 0);  // size=0 for byte
+			}
+			break;
+
+		case OGetI16:
+			// dst = *(int16*)(ra + rb) - Load half-word
+			if (dst && ra && rb) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				Arm64Reg rm = GET_REG(rb);
+				// LDRH Wd, [Xn, Xm]
+				arm_ldr_reg(ctx, rd, rn, rm, 1);  // size=1 for half-word
+			}
+			break;
+
+		case OGetMem:
+		case OGetArray:
+			// dst = *(int64*)(ra + rb) - Load 64-bit value
+			if (dst && ra && rb) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				Arm64Reg rm = GET_REG(rb);
+				// LDR Xd, [Xn, Xm]
+				arm_ldr_reg(ctx, rd, rn, rm, 3);  // size=3 for 64-bit
+			}
+			break;
+
+		case OSetI8:
+			// *(int8*)(dst + ra) = rb - Store byte
+			if (dst && ra && rb) {
+				Arm64Reg rt = GET_REG(rb);  // value to store
+				Arm64Reg rn = GET_REG(dst); // base address
+				Arm64Reg rm = GET_REG(ra);  // offset
+				// STRB Wt, [Xn, Xm]
+				arm_str_reg(ctx, rt, rn, rm, 0);  // size=0 for byte
+			}
+			break;
+
+		case OSetI16:
+			// *(int16*)(dst + ra) = rb - Store half-word
+			if (dst && ra && rb) {
+				Arm64Reg rt = GET_REG(rb);
+				Arm64Reg rn = GET_REG(dst);
+				Arm64Reg rm = GET_REG(ra);
+				// STRH Wt, [Xn, Xm]
+				arm_str_reg(ctx, rt, rn, rm, 1);  // size=1 for half-word
+			}
+			break;
+
+		case OSetMem:
+		case OSetArray:
+			// *(int64*)(dst + ra) = rb - Store 64-bit value
+			if (dst && ra && rb) {
+				Arm64Reg rt = GET_REG(rb);  // value to store
+				Arm64Reg rn = GET_REG(dst); // base address
+				Arm64Reg rm = GET_REG(ra);  // offset
+				// STR Xt, [Xn, Xm]
+				arm_str_reg(ctx, rt, rn, rm, 3);  // size=3 for 64-bit
 			}
 			break;
 
@@ -5420,6 +5517,30 @@ static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 		return;
 	}
 	unsigned int inst = (size << 30) | (0x39 << 24) | (0 << 22) | (imm12 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// LDR (register offset): Load from [rn + rm]
+// Format: size(2) 111 0 00 1 Rm(5) option(3) S(1) 10 Rn(5) Rt(5)
+// option=011 (LSL), S=0 (no shift)
+static void arm_ldr_reg(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, Arm64Reg rm, int size) {
+	unsigned int option = 0x3;  // LSL
+	unsigned int S = 0;          // No shift
+	unsigned int inst = (size << 30) | (0x38 << 24) | (1 << 21) | (arm_reg(rm) << 16) |
+	                    (option << 13) | (S << 12) | (0x2 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// STR (register offset): Store to [rn + rm]
+// Format: size(2) 111 0 00 0 Rm(5) option(3) S(1) 10 Rn(5) Rt(5)
+// option=011 (LSL), S=0 (no shift)
+static void arm_str_reg(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, Arm64Reg rm, int size) {
+	unsigned int option = 0x3;  // LSL
+	unsigned int S = 0;          // No shift
+	unsigned int inst = (size << 30) | (0x38 << 24) | (0 << 21) | (arm_reg(rm) << 16) |
+	                    (option << 13) | (S << 12) | (0x2 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
