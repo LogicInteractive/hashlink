@@ -5479,6 +5479,37 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			jit_error("OToDyn: dynamic allocation not yet implemented in ARM64");
 			break;
 
+		// =====================================================================
+		// Function Calls - Foundational Implementation
+		// =====================================================================
+		// NOTE: Full function call implementation requires:
+		// 1. Register allocation system (map vreg -> physical reg)
+		// 2. Stack frame management (save/restore FP, LR)
+		// 3. Argument marshalling (place args in X0-X7 or stack)
+		// 4. Call/return sequence with proper linking
+		//
+		// These are placeholder implementations. ARM64 calling convention (AAPCS64):
+		// - Args: X0-X7 (int/ptr), D0-D7 (float)
+		// - Return: X0 (int/ptr), D0 (float)
+		// - Caller-saved: X0-X15, X29-X30
+		// - Callee-saved: X19-X28
+		// =====================================================================
+
+		case OCall0:
+		case OCall1:
+		case OCall2:
+		case OCall3:
+		case OCall4:
+			// Function calls with 0-4 arguments
+			// TODO: Requires full implementation with:
+			// - Argument setup in X0-X3
+			// - Function pointer loading
+			// - BLR instruction for indirect call
+			// - Return value handling
+			// - Stack alignment (16-byte)
+			jit_error("Function calls not yet fully implemented in ARM64");
+			break;
+
 		default:
 			jit_error(hl_op_name(o->op));
 			break;
