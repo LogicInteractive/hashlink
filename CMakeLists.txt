@@ -165,6 +165,13 @@ if(IOS_PLATFORM)
     )
 endif()
 
+# WASM event loop integration
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(APPEND std_srcs
+        src/std/event_loop_wasm.c
+    )
+endif()
+
 add_library(libhl
     ${pcre_srcs}
     src/gc.c
