@@ -5,6 +5,7 @@
 
 #ifdef HL_EMSCRIPTEN
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #include <hl.h>
 
 // Timer callback structure
@@ -109,13 +110,16 @@ HL_PRIM void hl_async_sleep(int ms) {
 // Request animation frame (for smooth 60fps animations)
 static vclosure *raf_callback = NULL;
 
-static void raf_tick(double time) {
+static bool raf_tick(double time, void *userData) {
     if (raf_callback && raf_callback->hasValue) {
         vdynamic d;
+        vdynamic *args[1];
         d.t = &hlt_f64;
         d.v.d = time;
-        hl_dyn_call(raf_callback, &d, 1);
+        args[0] = &d;
+        hl_dyn_call(raf_callback, args, 1);
     }
+    return true;  // Continue animation loop
 }
 
 HL_PRIM void hl_request_animation_frame(vclosure *callback) {
@@ -123,10 +127,10 @@ HL_PRIM void hl_request_animation_frame(vclosure *callback) {
     emscripten_request_animation_frame(raf_tick, NULL);
 }
 
-DEFINE_PRIM(_VOID, hl_set_main_loop, _FUN(_VOID, _NO_ARG) _I32);
-DEFINE_PRIM(_I32, hl_set_timeout, _FUN(_VOID, _NO_ARG) _I32 _BOOL);
-DEFINE_PRIM(_VOID, hl_clear_timeout, _I32);
-DEFINE_PRIM(_VOID, hl_async_sleep, _I32);
-DEFINE_PRIM(_VOID, hl_request_animation_frame, _FUN(_VOID, _F64));
+DEFINE_PRIM(_VOID, set_main_loop, _FUN(_VOID, _NO_ARG) _I32);
+DEFINE_PRIM(_I32, set_timeout, _FUN(_VOID, _NO_ARG) _I32 _BOOL);
+DEFINE_PRIM(_VOID, clear_timeout, _I32);
+DEFINE_PRIM(_VOID, async_sleep, _I32);
+DEFINE_PRIM(_VOID, request_animation_frame, _FUN(_VOID, _F64));
 
 #endif // HL_EMSCRIPTEN

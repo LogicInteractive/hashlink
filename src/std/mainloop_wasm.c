@@ -77,8 +77,8 @@ HL_PRIM bool hl_mainloop_has_events() {
     return haxe_MainLoop_hasEvents();
 }
 
-DEFINE_PRIM(_VOID, hl_mainloop_start, _NO_ARG);
-DEFINE_PRIM(_VOID, hl_mainloop_stop, _NO_ARG);
-DEFINE_PRIM(_BOOL, hl_mainloop_has_events, _NO_ARG);
+DEFINE_PRIM(_VOID, mainloop_start, _NO_ARG);
+DEFINE_PRIM(_VOID, mainloop_stop, _NO_ARG);
+DEFINE_PRIM(_BOOL, mainloop_has_events, _NO_ARG);
 
 #endif // HL_EMSCRIPTEN
