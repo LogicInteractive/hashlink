@@ -3143,6 +3143,9 @@ static void arm_udiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool i
 static void arm_and_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_orr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_eor_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_lsl_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_lsr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_asr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_neg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, bool is64);
 static void arm_mov_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64);
 static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64);
@@ -4974,6 +4977,24 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// TODO: This needs fixing - should use immediate 1
 			}
 			break;
+		case OShl:
+			// dst = ra << rb (logical shift left)
+			if (dst && ra && rb) {
+				arm_lsl_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OUShr:
+			// dst = ra >> rb (logical/unsigned shift right)
+			if (dst && ra && rb) {
+				arm_lsr_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OSShr:
+			// dst = ra >> rb (arithmetic/signed shift right)
+			if (dst && ra && rb) {
+				arm_asr_reg(ctx, rd, rn, rm, true);
+			}
+			break;
 		case ORet:
 			// Return from function
 			if (dst) {
@@ -5487,6 +5508,33 @@ static void arm_asr_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int shi
 
 	unsigned int inst = (sf << 31) | (0x13 << 23) | (n << 22) |
 	                    (immr << 16) | (imms << 10) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// LSLV (logical shift left variable): rd = rn << rm
+// Format: sf 0 0 11010110 Rm(5) 001000 Rn(5) Rd(5)
+static void arm_lsl_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0xD6 << 21) | (arm_reg(rm) << 16) | (0x08 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// LSRV (logical shift right variable): rd = rn >> rm (unsigned)
+// Format: sf 0 0 11010110 Rm(5) 001001 Rn(5) Rd(5)
+static void arm_lsr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0xD6 << 21) | (arm_reg(rm) << 16) | (0x09 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// ASRV (arithmetic shift right variable): rd = rn >> rm (signed)
+// Format: sf 0 0 11010110 Rm(5) 001010 Rn(5) Rd(5)
+static void arm_asr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0xD6 << 21) | (arm_reg(rm) << 16) | (0x0A << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
 	B32(inst);
 }
 
