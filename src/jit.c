@@ -5243,6 +5243,70 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 			break;
 
+		// =====================================================================
+		// Type and Object Operations
+		// =====================================================================
+
+		case OType:
+			// dst = &(code->types[p2]) - Load constant type pointer
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+				uint64_t type_ptr = (uint64_t)(m->code->types + o->p2);
+				arm_load_imm64(ctx, rd, type_ptr);
+			}
+			break;
+
+		case OArraySize:
+			// dst = array->size - Load array size from memory
+			// Size is stored at offset HL_WSIZE*2 for arrays, HL_WSIZE+4 for HABSTRACT
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);  // array pointer
+				int offset = (ra->t->kind == HABSTRACT) ? (HL_WSIZE + 4) : (HL_WSIZE * 2);
+
+				// LDR Wd, [Xn, #offset] (load 32-bit size)
+				if (offset < 4096) {
+					arm_ldr_imm(ctx, rd, rn, offset / 4, 2);  // size=2 for 32-bit
+				} else {
+					// Offset too large, use temp register
+					Arm64Reg temp = X9;
+					arm_load_imm64(ctx, temp, offset);
+					arm_ldr_reg(ctx, rd, rn, temp, 2);  // size=2 for 32-bit
+				}
+			}
+			break;
+
+		case ORef:
+			// dst = &ra - Get reference to stack variable
+			// This needs stack frame context which isn't fully set up yet
+			// For now, placeholder
+			{
+				jit_error("ORef: Stack references not yet implemented in ARM64");
+			}
+			break;
+
+		case OUnref:
+			// dst = *ra - Dereference pointer
+			// dst = *(ra + 0)
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				// LDR Xd, [Xn, #0]
+				arm_ldr_imm(ctx, rd, rn, 0, 3);  // size=3 for 64-bit
+			}
+			break;
+
+		case OSetref:
+			// *dst = ra - Store through pointer
+			// *(dst + 0) = ra
+			if (dst && ra) {
+				Arm64Reg rt = GET_REG(ra);  // value to store
+				Arm64Reg rn = GET_REG(dst); // pointer
+				// STR Xt, [Xn, #0]
+				arm_str_imm(ctx, rt, rn, 0, 3);  // size=3 for 64-bit
+			}
+			break;
+
 		default:
 			jit_error(hl_op_name(o->op));
 			break;
