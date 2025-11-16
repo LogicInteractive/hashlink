@@ -1,0 +1,212 @@
+================================================================================
+                    HASHLINK RUNTIME ARCHITECTURE
+================================================================================
+
+PLATFORM LAYER (Detected at compile time)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Windows | macOS | iOS | Linux | Android | BSD | WASM | Console (PS/NX/XB) │
+│         │       │     │       │         │     │      │                     │
+│         └─ HL_WIN, HL_MAC, HL_IOS, HL_LINUX, HL_ANDROID, HL_BSD, etc.    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+CORE RUNTIME ABSTRACTION
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  hl.h (1,027 LOC)  ◄──────── Main Header with All Platform Defines        │
+│  │                                                                         │
+│  ├─► Type System                       (24 basic types, unions, refs)     │
+│  ├─► Memory Type Definitions           (allocators, GC structures)        │
+│  ├─► Thread Control                    (__thread / __declspec(thread))    │
+│  ├─► Unicode Support                   (uchar = wchar_t or char16_t)      │
+│  └─► Debug/Performance Macros          (inline, noreturn, prefetch)       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                  ┌───────────────────┼───────────────────┐
+                  │                   │                   │
+                  ▼                   ▼                   ▼
+            MEMORY                EXECUTION           MODULES
+         ┌──────────────┐      ┌──────────────┐    ┌──────────────┐
+         │ allocator.c  │      │  jit.c       │    │ module.c     │
+         │ (638 LOC)    │      │  (4,689 LOC) │    │ (1,013 LOC)  │
+         │              │      │              │    │              │
+         │ • Page alloc │      │ • x86/x64    │    │ • Module     │
+         │ • GC pages   │      │ • Register   │    │   loading    │
+         │ • Free lists │      │   alloc      │    │ • Symbol     │
+         │              │      │ • Instruction│    │   resolution │
+         │ gc.c (1,528) │      │   gen        │    │ • Hot reload │
+         │              │      │              │    │              │
+         │ • Mark/sweep │      └──────────────┘    └──────────────┘
+         │   GC         │      (x86/x64 ONLY!)    (Bytecode mgmt)
+         │ • Partition  │
+         │   freelist   │
+         └──────────────┘
+                │
+         [Emscripten integration]:
+         emscripten_builtin_memalign()
+         emscripten_builtin_free()
+         
+
+BYTECODE EXECUTION
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  code.c (1,101 LOC)        ◄──── Parse .hl bytecode files                  │
+│  └─► Read/parse operations                                                 │
+│  └─► Type/function definitions                                             │
+│  └─► Constant table loading                                                │
+│                                                                             │
+│  main.c (315 LOC)          ◄──── HL Bytecode Interpreter                   │
+│  └─► File loading & execution                                              │
+│  └─► Hot reload (check file modification time)                             │
+│  └─► Exception handling                                                    │
+│                                                                             │
+│  hlc_main.c (179 LOC)      ◄──── HL-C Compiled Binary Entry Point          │
+│  └─► Symbol resolution (Windows dbghelp, Linux backtrace, etc.)            │
+│  └─► Stack capture for exceptions                                          │
+│  └─► Safe entry point execution                                            │
+│                                                                             │
+│  debugger.c (157 LOC)      ◄──── Runtime Debugging Support                 │
+│  └─► Debugger communication                                                │
+│                                                                             │
+│  profile.c (586 LOC)       ◄──── Performance Sampling                       │
+│  └─► Profiler integration                                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+STANDARD LIBRARY (src/std/ - 10,072 LOC)
+┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
+│  Type System       │  │  Object System     │  │  Runtime Utilities │
+├────────────────────┤  ├────────────────────┤  ├────────────────────┤
+│ types.c (1,001)    │  │ obj.c (1,351)      │  │ error.c (301)      │
+│ • Type reflection  │  │ • Fields/protos    │  │ • Exceptions       │
+│ • Type lookup      │  │ • Bindings         │  │ • Error info       │
+│ • Value handling   │  │ • VTable           │  │                    │
+│                    │  │                    │  │ cast.c (601)       │
+│ cast.c (601)       │  │ fun.c (465)        │  │ • Type casting     │
+│ • Type conversion  │  │ • Closures         │  │ • Dynamic casts    │
+│                    │  │ • Function wraps   │  │                    │
+│                    │  │                    │  │ debug.c (415)      │
+│                    │  │                    │  │ • Debug symbols    │
+│                    │  │                    │  │ • Stack traces     │
+└────────────────────┘  └────────────────────┘  └────────────────────┘
+
+┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
+│  Data Structures   │  │  String/Unicode    │  │  Threading         │
+├────────────────────┤  ├────────────────────┤  ├────────────────────┤
+│ array.c            │  │ string.c (383)     │  │ thread.c (1,176)   │
+│ • Array ops        │  │ • String ops       │  │ • Mutexes          │
+│                    │  │ • UTF-16 strings   │  │ • Condition vars   │
+│ maps.c (319)       │  │                    │  │ • Thread local     │
+│ • Hash maps        │  │ ucs2.c             │  │ • Semaphores       │
+│ • Hash functions   │  │ • Unicode tables   │  │                    │
+│                    │  │ • Conversions      │  │ (Can disable with  │
+│ buffer.c (418)     │  │                    │  │  -DHL_NO_THREADS)  │
+│ • Byte buffers     │  │ bytes.c (301)      │  │                    │
+│ • Buffer I/O       │  │ • Byte ops         │  │                    │
+│                    │  │ • Byte arrays      │  │                    │
+└────────────────────┘  └────────────────────┘  └────────────────────┘
+
+┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
+│  Platform/System   │  │  Networking        │  │  I/O & Time        │
+├────────────────────┤  ├────────────────────┤  ├────────────────────┤
+│ sys.c (741)        │  │ socket.c (517)     │  │ file.c (~200)      │
+│ ★ CRITICAL ★       │  │ • TCP sockets      │  │ • File operations  │
+│ • OS name          │  │ • UDP sockets      │  │ • Directory ops    │
+│ • System time      │  │ • DNS resolution   │  │ • Path handling    │
+│ • Locale info      │  │ • Non-blocking I/O │  │                    │
+│ • Env vars         │  │                    │  │ date.c             │
+│ • File ops         │  │ regexp.c (140)     │  │ • Time/date        │
+│                    │  │ • PCRE2 regex      │  │ • Timestamp        │
+│ sys_android.c      │  │                    │  │                    │
+│ • Android API      │  │                    │  │ random.c           │
+│                    │  │                    │  │ • RNG              │
+│ sys_ios.m          │  │                    │  │                    │
+│ • iOS/Obj-C API    │  │                    │  │ process.c (319)    │
+│                    │  │                    │  │ • Subprocess exec  │
+└────────────────────┘  └────────────────────┘  └────────────────────┘
+
+┌────────────────────┐
+│  Debug/Memory      │
+├────────────────────┤
+│ track.c            │
+│ • Memory tracking  │
+│ • Allocation logs  │
+│ • Leak detection   │
+│                    │
+│ (Debug builds only)│
+└────────────────────┘
+
+
+OPTIONAL EXTENDED LIBRARIES (libs/ - NOT part of minimal runtime)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Graphics/Media            Networking/Crypto           Databases           │
+│  ├─ sdl/ (SDL2)             ├─ ssl/ (MbedTLS)         ├─ sqlite/           │
+│  ├─ heaps/ (3D engine)       ├─ uv/ (LibUV)            └─ mysql/            │
+│  ├─ fmt/ (Image codecs)      ├─ video/ (codecs)                            │
+│  ├─ openal/ (Audio)          └─ directx/ (Windows)     UI/Utils            │
+│  ├─ mesa/ (OpenGL)                                     └─ ui/              │
+│  └─ video/ (codecs)                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+BUILD OUTPUT FLOW
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  haxe -hl output.c ... ──────────► HL-C Generation (Haxe compiler)         │
+│                           │                                                 │
+│                           ├──► output.c (Generated C code)                 │
+│                           │         │                                      │
+│                           │         ▼                                      │
+│                           │   emcc output.c \                              │
+│                           │       -o app.js \                              │
+│                           │       -s WASM=1 \                              │
+│                           │       -l hl ...  ──────► app.js + app.wasm    │
+│                           │                                                │
+│  haxe -hl hello.hl ... ──┴───────► HL Bytecode (Haxe compiler)            │
+│                           │                                                │
+│                           └──► hello.hl                                    │
+│                                   │                                        │
+│                                   ▼                                        │
+│                           ./hl hello.hl ──────► JIT compile & execute     │
+│                                   │                                        │
+│                                   └──► x86/x64 code (on x86 only)          │
+│                                                                            │
+│  Two Paths:                                                               │
+│  Path 1 (HL-C): Portable, works on WASM, ARM, etc.                       │
+│  Path 2 (JIT): Fast on x86/x64, requires native platform                 │
+│                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+WASM COMPILATION REQUIREMENTS
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  REQUIRED (minimal runtime):                                                │
+│  ├─ allocator.c (Emscripten hooks: emscripten_builtin_*)                  │
+│  ├─ gc.c (Emscripten memory management)                                   │
+│  ├─ src/std/obj.c, types.c, string.c, bytes.c, buffer.c                  │
+│  ├─ src/std/cast.c, error.c, fun.c, maps.c, array.c                      │
+│  ├─ src/std/ucs2.c (Unicode)                                              │
+│  └─ src/std/sys.c (WASM stub version)                                     │
+│                                                                            │
+│  OPTIONAL (as needed):                                                     │
+│  ├─ PCRE2 (regex) ◄─ regexp.c dependency                                  │
+│  ├─ src/std/random.c (C stdlib RNG)                                       │
+│  ├─ src/std/date.c (system time calls)                                    │
+│  └─ src/std/file.c (WASM VFS or memfs)                                    │
+│                                                                            │
+│  SHOULD DISABLE for WASM:                                                 │
+│  ├─ jit.c (x86/x64 only, Emscripten compiles anyway)                     │
+│  ├─ src/std/thread.c (WASM single-threaded) ◄─ Set -DHL_NO_THREADS       │
+│  ├─ src/std/socket.c (limited WASM socket API)                           │
+│  ├─ src/std/process.c (WASM has no process model)                        │
+│  ├─ debugger.c (unless need runtime debugging)                           │
+│  └─ profile.c (optional profiling)                                        │
+│                                                                            │
+│  Estimated size:                                                           │
+│  • libhl.a (unoptimized): 6-8 MB                                          │
+│  • With LTO + strip: ~1-2 MB                                              │
+│  • With aggressive optimization: ~500 KB                                   │
+│                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
