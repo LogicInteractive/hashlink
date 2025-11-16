@@ -5495,20 +5495,183 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		// - Callee-saved: X19-X28
 		// =====================================================================
 
-		case OCall0:
-		case OCall1:
-		case OCall2:
-		case OCall3:
-		case OCall4:
-			// Function calls with 0-4 arguments
-			// TODO: Requires full implementation with:
-			// - Argument setup in X0-X3
-			// - Function pointer loading
-			// - BLR instruction for indirect call
-			// - Return value handling
-			// - Stack alignment (16-byte)
-			jit_error("Function calls not yet fully implemented in ARM64");
-			break;
+	case OCall0:
+		{
+			// Call function with 0 arguments
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+				// BLR X9 - branch with link to register
+				B32(0xd63f0120);  // BLR X9
+				// Result is in X0
+				if (dst) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			}
+		}
+		break;
+
+	case OCall1:
+		{
+			// Call function with 1 argument
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Move argument to X0
+				vreg *arg0 = hl_get_reg(f, o->p3);
+				if (arg0) {
+					Arm64Reg r0 = GET_REG(arg0);
+					if (r0 != X0) {
+						arm_mov_reg(ctx, X0, r0, true);
+					}
+				}
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+				// BLR X9
+				B32(0xd63f0120);
+				// Result is in X0
+				if (dst) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			}
+		}
+		break;
+
+	case OCall2:
+		{
+			// Call function with 2 arguments
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Move arguments to X0, X1
+				vreg *arg0 = hl_get_reg(f, o->p3);
+				vreg *arg1 = hl_get_reg(f, (int)(int_val)o->extra);
+				// Move arg1 first to avoid clobbering
+				if (arg1) {
+					Arm64Reg r1 = GET_REG(arg1);
+					if (r1 != X1) {
+						arm_mov_reg(ctx, X1, r1, true);
+					}
+				}
+				if (arg0) {
+					Arm64Reg r0 = GET_REG(arg0);
+					if (r0 != X0) {
+						arm_mov_reg(ctx, X0, r0, true);
+					}
+				}
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+				// BLR X9
+				B32(0xd63f0120);
+				// Result is in X0
+				if (dst) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			}
+		}
+		break;
+
+	case OCall3:
+		{
+			// Call function with 3 arguments
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Move arguments to X0, X1, X2
+				vreg *arg0 = hl_get_reg(f, o->p3);
+				vreg *arg1 = hl_get_reg(f, o->extra[0]);
+				vreg *arg2 = hl_get_reg(f, o->extra[1]);
+				// Move in reverse order to avoid clobbering
+				if (arg2) {
+					Arm64Reg r2 = GET_REG(arg2);
+					if (r2 != X2) {
+						arm_mov_reg(ctx, X2, r2, true);
+					}
+				}
+				if (arg1) {
+					Arm64Reg r1 = GET_REG(arg1);
+					if (r1 != X1) {
+						arm_mov_reg(ctx, X1, r1, true);
+					}
+				}
+				if (arg0) {
+					Arm64Reg r0 = GET_REG(arg0);
+					if (r0 != X0) {
+						arm_mov_reg(ctx, X0, r0, true);
+					}
+				}
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+				// BLR X9
+				B32(0xd63f0120);
+				// Result is in X0
+				if (dst) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			}
+		}
+		break;
+
+	case OCall4:
+		{
+			// Call function with 4 arguments
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Move arguments to X0, X1, X2, X3
+				vreg *arg0 = hl_get_reg(f, o->p3);
+				vreg *arg1 = hl_get_reg(f, o->extra[0]);
+				vreg *arg2 = hl_get_reg(f, o->extra[1]);
+				vreg *arg3 = hl_get_reg(f, o->extra[2]);
+				// Move in reverse order to avoid clobbering
+				if (arg3) {
+					Arm64Reg r3 = GET_REG(arg3);
+					if (r3 != X3) {
+						arm_mov_reg(ctx, X3, r3, true);
+					}
+				}
+				if (arg2) {
+					Arm64Reg r2 = GET_REG(arg2);
+					if (r2 != X2) {
+						arm_mov_reg(ctx, X2, r2, true);
+					}
+				}
+				if (arg1) {
+					Arm64Reg r1 = GET_REG(arg1);
+					if (r1 != X1) {
+						arm_mov_reg(ctx, X1, r1, true);
+					}
+				}
+				if (arg0) {
+					Arm64Reg r0 = GET_REG(arg0);
+					if (r0 != X0) {
+						arm_mov_reg(ctx, X0, r0, true);
+					}
+				}
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+				// BLR X9
+				B32(0xd63f0120);
+				// Result is in X0
+				if (dst) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			}
+		}
+		break;
+
 
 		default:
 			jit_error(hl_op_name(o->op));
