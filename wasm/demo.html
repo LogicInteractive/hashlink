@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HashLink WASM Demo - Pre-compiled Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .demo-notice {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            color: #856404;
+        }
+        .demo-notice h3 {
+            margin-top: 0;
+        }
+        .status {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        #status {
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        #status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+        #status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        #status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .console {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            max-height: 600px;
+            overflow-y: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .console-line {
+            margin: 5px 0;
+        }
+        .console-line.trace {
+            color: #4ec9b0;
+        }
+        .console-line.error {
+            color: #f48771;
+        }
+        .console-line.success {
+            color: #b5cea8;
+            font-weight: bold;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .info-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .info-card h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        .info-card p {
+            margin: 5px 0;
+            color: #666;
+        }
+        .info-card .value {
+            font-weight: bold;
+            color: #333;
+        }
+        .build-instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .build-instructions h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .build-instructions pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .build-instructions code {
+            font-family: 'Courier New', monospace;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px 10px 0;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:active {
+            background: #4451b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 HashLink WASM Demo</h1>
+        <p>Pre-compiled demonstration of HashLink running on WebAssembly</p>
+    </div>
+
+    <div class="demo-notice">
+        <h3>📢 This is a Pre-compiled Demo</h3>
+        <p>This page simulates what the actual HashLink WASM POC produces. The test output below is what you would see after compiling the real test with Emscripten.</p>
+        <p><strong>To build and run the actual WASM:</strong> See instructions at the bottom of this page.</p>
+    </div>
+
+    <div class="status">
+        <h2>Status</h2>
+        <div id="status" class="loading">Ready to run demo...</div>
+        <div style="margin-top: 10px;">
+            <button onclick="runDemo()">▶️ Run Demo</button>
+            <button onclick="clearConsole()">🗑️ Clear Console</button>
+        </div>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-card">
+            <h3>Runtime Info</h3>
+            <p>Platform: <span class="value" id="platform">WebAssembly (Emscripten)</span></p>
+            <p>Memory: <span class="value" id="memory">16 MB</span></p>
+            <p>Stack: <span class="value" id="stack">5 MB</span></p>
+        </div>
+        <div class="info-card">
+            <h3>WASM Module (Simulated)</h3>
+            <p>Size: <span class="value" id="wasm-size">~1.2 MB</span></p>
+            <p>Load Time: <span class="value" id="load-time">-</span></p>
+            <p>Init Time: <span class="value" id="init-time">-</span></p>
+        </div>
+        <div class="info-card">
+            <h3>Test Results</h3>
+            <p>Status: <span class="value" id="test-status">Not Run</span></p>
+            <p>Duration: <span class="value" id="test-duration">-</span></p>
+            <p>Output Lines: <span class="value" id="output-lines">0</span></p>
+        </div>
+    </div>
+
+    <div class="status">
+        <h2>Console Output</h2>
+        <div class="console" id="console">
+            <div class="console-line trace">Click "Run Demo" to see HashLink WASM test output...</div>
+        </div>
+    </div>
+
+    <div class="build-instructions">
+        <h2>Want to Build the Real Thing?</h2>
+        <p>This demo simulates the output. To compile and run actual HashLink WASM code:</p>
+
+        <h3>Quick Start (Linux/macOS)</h3>
+        <pre><code># Install prerequisites
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk && ./emsdk install latest && ./emsdk activate latest
+source ./emsdk_env.sh
+
+# Install Haxe from https://haxe.org/download/
+
+# Build and run
+cd /path/to/hashlink
+./wasm/build_wasm.sh
+./wasm/run_test.sh</code></pre>
+
+        <h3>Quick Start (Windows)</h3>
+        <pre><code>REM Install prerequisites
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+emsdk install latest
+emsdk activate latest
+emsdk_env.bat
+
+REM Install Haxe from https://haxe.org/download/
+
+REM Build and run
+cd C:\path\to\hashlink
+wasm\build_wasm.bat
+wasm\run_test.bat</code></pre>
+
+        <h3>Documentation</h3>
+        <ul>
+            <li><strong>README.md</strong> - Main POC documentation</li>
+            <li><strong>WASM_POC.md</strong> - Overview and quickstart</li>
+            <li><strong>wasm/WINDOWS.md</strong> - Complete Windows guide</li>
+            <li><strong>WASM_EXPLORATION_INDEX.md</strong> - Technical investigation</li>
+        </ul>
+    </div>
+
+    <script>
+        const consoleDiv = document.getElementById('console');
+        const statusDiv = document.getElementById('status');
+        let outputLines = 0;
+
+        function updateStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+        }
+
+        function addLine(message, className = 'trace') {
+            const line = document.createElement('div');
+            line.className = 'console-line ' + className;
+            line.textContent = message;
+            consoleDiv.appendChild(line);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            outputLines++;
+            document.getElementById('output-lines').textContent = outputLines;
+        }
+
+        function clearConsole() {
+            consoleDiv.innerHTML = '<div class="console-line trace">Console cleared. Click "Run Demo" to run again.</div>';
+            outputLines = 1;
+            document.getElementById('output-lines').textContent = outputLines;
+            updateStatus('Ready to run demo...', 'loading');
+            document.getElementById('test-status').textContent = 'Not Run';
+            document.getElementById('test-duration').textContent = '-';
+            document.getElementById('load-time').textContent = '-';
+            document.getElementById('init-time').textContent = '-';
+        }
+
+        async function runDemo() {
+            clearConsole();
+            updateStatus('Loading WASM module...', 'loading');
+
+            const startTime = Date.now();
+
+            // Simulate loading
+            await sleep(300);
+            const loadTime = Date.now() - startTime;
+            document.getElementById('load-time').textContent = loadTime + 'ms';
+            addLine('Starting HashLink WASM runtime...');
+            addLine('');
+
+            await sleep(100);
+            const initTime = 45;
+            document.getElementById('init-time').textContent = initTime + 'ms';
+            addLine(`Page loaded in ${loadTime}ms`);
+            addLine(`Module initialized in ${initTime}ms`);
+            addLine('Runtime initialized successfully');
+            addLine('');
+
+            updateStatus('Running tests...', 'loading');
+            document.getElementById('test-status').textContent = 'Running';
+
+            // Run the simulated test output
+            await sleep(200);
+            addLine('Hello from HashLink on WASM!');
+            addLine('');
+
+            await sleep(100);
+            addLine('Testing basic operations:');
+
+            await sleep(150);
+            addLine('Sum 1-100: 5050');
+
+            await sleep(100);
+            addLine('String: Hello WASM');
+
+            await sleep(100);
+            addLine('Float math: 42.5');
+
+            await sleep(100);
+            addLine('Array sum: 15');
+
+            await sleep(100);
+            addLine('Object: WASM Test = 42');
+
+            await sleep(100);
+            addLine('Function call: square(7) = 49');
+
+            await sleep(100);
+            addLine('Type cast: "123" -> 123');
+
+            await sleep(100);
+            addLine('Map size: 3');
+
+            await sleep(100);
+            addLine('Counter value: 12');
+
+            await sleep(100);
+            addLine('Caught exception: This is a test exception');
+
+            await sleep(200);
+            addLine('');
+            addLine('All tests completed successfully!');
+            addLine('HashLink WASM runtime is working!');
+
+            await sleep(100);
+            addLine('');
+            addLine('=================================', 'success');
+            addLine('✓ PROOF OF CONCEPT SUCCESSFUL!', 'success');
+            addLine('=================================', 'success');
+
+            const duration = Date.now() - startTime;
+            document.getElementById('test-status').textContent = 'Passed ✓';
+            document.getElementById('test-duration').textContent = duration + 'ms';
+            updateStatus('✓ All Tests Passed!', 'success');
+
+            addLine('');
+            addLine('This demo simulates the HashLink WASM POC output.', 'trace');
+            addLine('See the instructions below to build the real thing!', 'trace');
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+    </script>
+</body>
+</html>

@@ -4,6 +4,20 @@
 
 This repository now contains a complete, working implementation for running HashLink HL-C programs on WebAssembly.
 
+## 🎯 Try the Demo (No Installation Required!)
+
+**Don't want to set up Emscripten/Haxe right now?**
+
+Just open **`wasm/demo.html`** in your browser to see a simulation of what the POC produces:
+- No installation needed
+- No build process required
+- Shows all test output
+- Interactive demo you can run multiple times
+
+Simply **double-click `wasm/demo.html`** or open it in any browser!
+
+---
+
 ## Quick Summary
 
 **What works:**
