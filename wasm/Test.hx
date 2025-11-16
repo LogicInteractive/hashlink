@@ -48,16 +48,17 @@ class Test {
         trace('Function call: square(7) = $squared');
 
         // Type casting
-        var dynamic:Dynamic = "123";
-        var parsed = Std.parseInt(dynamic);
-        trace('Type cast: "$dynamic" -> $parsed');
+        var dynValue:Dynamic = "123";
+        var parsed = Std.parseInt(dynValue);
+        trace('Type cast: "$dynValue" -> $parsed');
 
         // Map/Dictionary
         var map = new Map<String, Int>();
         map.set("one", 1);
         map.set("two", 2);
         map.set("three", 3);
-        trace('Map size: ${map.keys().length}');
+        var mapSize = Lambda.count(map);
+        trace('Map size: $mapSize');
 
         // Class instantiation
         var counter = new Counter(10);
