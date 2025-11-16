@@ -5000,6 +5000,16 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_asr_reg(ctx, rd, rn, rm, true);
 			}
 			break;
+		case ONop:
+			// No operation
+			break;
+		case ONull:
+			// dst = null (set to 0)
+			if (dst) {
+				// XOR register with itself to set to 0
+				arm_eor_reg(ctx, rd, rd, rd, true);
+			}
+			break;
 		case ORet:
 			// Return from function
 			if (dst) {
