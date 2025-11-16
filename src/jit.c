@@ -4921,6 +4921,28 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_movz(ctx, rd, o->p2 ? 1 : 0, 0, true);
 			}
 			break;
+
+		case OString:
+			// dst = string constant pointer
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+				uint64_t str_ptr = (uint64_t)hl_get_ustring(m->code, o->p2);
+				arm_load_imm64(ctx, rd, str_ptr);
+			}
+			break;
+
+		case OBytes:
+			// dst = bytes constant pointer
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+				char *b = m->code->version >= 5 ?
+				          m->code->bytes + m->code->bytes_pos[o->p2] :
+				          m->code->strings[o->p2];
+				uint64_t bytes_ptr = (uint64_t)b;
+				arm_load_imm64(ctx, rd, bytes_ptr);
+			}
+			break;
+
 		case OAdd:
 			// dst = ra + rb
 			if (dst && ra && rb) {
@@ -5315,6 +5337,100 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				Arm64Reg rn = GET_REG(ra);
 				// LDR Wd, [Xn, #0] (load 32-bit type ID)
 				arm_ldr_imm(ctx, rd, rn, 0, 2);  // size=2 for 32-bit
+			}
+			break;
+
+		// =====================================================================
+		// Field Access Operations
+		// =====================================================================
+
+		case OField:
+			// dst = object->field - Load field from object
+			// Field offset is in runtime object structure
+			if (dst && ra) {
+				if (ra->t->kind == HOBJ || ra->t->kind == HSTRUCT) {
+					hl_runtime_obj *rt = hl_get_obj_rt(ra->t);
+					int field_offset = rt->fields_indexes[o->p3];
+					Arm64Reg rd = GET_REG(dst);
+					Arm64Reg rn = GET_REG(ra);
+
+					// LDR Xd, [Xn, #offset]
+					if (field_offset < 4096 * 8) {
+						arm_ldr_imm(ctx, rd, rn, field_offset / 8, 3);  // size=3 for 64-bit
+					} else {
+						// Offset too large, use temp register
+						Arm64Reg temp = X9;
+						arm_load_imm64(ctx, temp, field_offset);
+						arm_ldr_reg(ctx, rd, rn, temp, 3);
+					}
+				} else {
+					jit_error("OField: unsupported type");
+				}
+			}
+			break;
+
+		case OSetField:
+			// object->field = rb - Store field to object
+			if (dst && rb) {
+				if (dst->t->kind == HOBJ || dst->t->kind == HSTRUCT) {
+					hl_runtime_obj *rt = hl_get_obj_rt(dst->t);
+					int field_offset = rt->fields_indexes[o->p2];
+					Arm64Reg rt_reg = GET_REG(rb);  // value
+					Arm64Reg rn = GET_REG(dst);     // object
+
+					// STR Xt, [Xn, #offset]
+					if (field_offset < 4096 * 8) {
+						arm_str_imm(ctx, rt_reg, rn, field_offset / 8, 3);
+					} else {
+						Arm64Reg temp = X9;
+						arm_load_imm64(ctx, temp, field_offset);
+						arm_str_reg(ctx, rt_reg, rn, temp, 3);
+					}
+				} else {
+					jit_error("OSetField: unsupported type");
+				}
+			}
+			break;
+
+		case OGetThis:
+			// dst = this->field - Load field from "this" (register 0)
+			{
+				vreg *r = R(0);  // "this" is always in register 0
+				if (r->t->kind == HOBJ || r->t->kind == HSTRUCT) {
+					hl_runtime_obj *rt = hl_get_obj_rt(r->t);
+					int field_offset = rt->fields_indexes[o->p2];
+					Arm64Reg rd = GET_REG(dst);
+					Arm64Reg r0 = GET_REG(r);
+
+					if (field_offset < 4096 * 8) {
+						arm_ldr_imm(ctx, rd, r0, field_offset / 8, 3);
+					} else {
+						Arm64Reg temp = X9;
+						arm_load_imm64(ctx, temp, field_offset);
+						arm_ldr_reg(ctx, rd, r0, temp, 3);
+					}
+				}
+			}
+			break;
+
+		case OSetThis:
+			// this->field = ra - Store field to "this"
+			{
+				vreg *r = R(0);
+				if (r->t->kind == HOBJ || r->t->kind == HSTRUCT) {
+					hl_runtime_obj *rt = hl_get_obj_rt(r->t);
+					int field_offset = rt->fields_indexes[o->p2];
+					Arm64Reg rt_reg = GET_REG(ra);  // value
+					Arm64Reg r0 = GET_REG(r);       // this
+
+					if (field_offset < 4096 * 8) {
+						arm_str_imm(ctx, rt_reg, r0, field_offset / 8, 3);
+					} else {
+						Arm64Reg temp = X9;
+						arm_load_imm64(ctx, temp, field_offset);
+						arm_str_reg(ctx, rt_reg, r0, temp, 3);
+					}
+				}
 			}
 			break;
 
