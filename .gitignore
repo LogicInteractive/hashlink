@@ -62,3 +62,4 @@ args.txt
 /test_arm64_jit
 /test_memory_ops
 /test_modulo
+/test_field_access
