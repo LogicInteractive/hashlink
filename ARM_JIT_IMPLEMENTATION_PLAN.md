@@ -35,7 +35,170 @@
 
 ---
 
-## PHASE 1: FOUNDATION (Days 1-3)
+## DEVELOPMENT ENVIRONMENT: What Can Be Done Where?
+
+### ✅ Work You Can Do HERE (No ARM Hardware Required)
+
+**Phase 0-2: Refactoring and Scaffolding**
+- Refactor existing x86 code into conditional blocks
+- Add ARM64 register definitions and stubs
+- Implement instruction encoders
+- Cross-compile for ARM64 (catches build errors, no execution)
+- Unit tests for instruction encoding (compare vs clang output)
+- Code review and static analysis
+
+**Tools needed:**
+```bash
+# Cross-compilation toolchain
+sudo apt-get install gcc-aarch64-linux-gnu
+# Can build for ARM64 without running
+```
+
+### ⚠️ Work That REQUIRES ARM Hardware
+
+**Phase 3+: Actual Execution**
+- Running JIT-compiled code (needs instruction cache flush)
+- GC stress testing under load
+- Debugging crashes with real stack traces
+- Exception handling validation
+- Performance measurement and optimization
+
+**Hardware options:**
+- Raspberry Pi 4/5 (ARM64 Linux) - **Recommended**
+- Android device with Termux
+- Apple Silicon Mac
+- Cloud ARM64 instance (AWS Graviton, Oracle ARM)
+
+**Strategy:** Start with Phases 0-2 here, then set up ARM hardware for Phase 3+
+
+---
+
+## PHASE 0: SAFE REFACTORING (Days 1-2) **← START HERE**
+
+**Goal:** Create dual-backend structure WITHOUT breaking x86
+
+**Why do this first:**
+- Creates clean baseline
+- Proves x86 still works
+- Makes ARM64 addition safe
+- Reduces risk
+
+### 0.1 Wrap Existing x86 Code
+
+**File:** `src/jit.c`
+
+**Step 1: Add architecture detection at top of file**
+```c
+// After includes, before line 29
+
+// Architecture detection
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#   define HL_X86
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#   define HL_ARM64
+#elif defined(__arm__) || defined(_M_ARM)
+#   define HL_ARM32
+#   error "ARM32 not yet supported, use ARM64 or x86-64"
+#else
+#   error "JIT does not support this processor architecture"
+#endif
+```
+
+**Step 2: Wrap x86-specific register enums**
+```c
+// Lines 37-57: Wrap in #ifdef HL_X86
+
+#ifdef HL_X86
+
+typedef enum {
+    Eax = 0,
+    Ecx = 1,
+    // ... existing x86 registers ...
+    _LAST = 0xFF
+} CpuReg;
+
+#endif // HL_X86
+```
+
+**Step 3: Wrap x86 instruction opcodes**
+```c
+// Lines 59-129: Wrap in #ifdef HL_X86
+
+#ifdef HL_X86
+
+typedef enum {
+    MOV,
+    LEA,
+    // ... existing x86 opcodes ...
+    _CPU_LAST
+} CpuOp;
+
+#endif // HL_X86
+```
+
+**Step 4: Wrap x86 calling convention**
+```c
+// Lines 228-239: Wrap in #ifdef HL_X86
+
+#ifdef HL_X86
+// ... existing CALL_REGS etc ...
+#endif
+```
+
+**Step 5: Verify x86 still builds and works**
+```bash
+make clean
+make
+./hl other/tests/hello.hl  # Should work exactly as before
+```
+
+**Deliverable:**
+- x86 builds and all tests pass
+- Code is ready for ARM64 addition
+- Commit: "Refactor: Wrap x86 JIT in conditional compilation blocks"
+
+### 0.2 Add ARM64 Stub Structure
+
+**Add after x86 sections:**
+```c
+#ifdef HL_ARM64
+
+// ARM64 backend - STUB IMPLEMENTATION
+// TODO: Implement in Phase 1+
+
+typedef enum {
+    X0 = 0, X1, X2, X3, X4, X5, X6, X7,
+    // ... (full ARM64 register set)
+} Arm64Reg;
+
+// Instruction encoders - stubbed
+static void arm64_stub_error(const char *msg) {
+    hl_fatal("ARM64 JIT not yet implemented: %s", msg);
+}
+
+#endif // HL_ARM64
+```
+
+**Update hl_jit_function() to call stub on ARM64:**
+```c
+int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
+#ifdef HL_ARM64
+    arm64_stub_error("hl_jit_function");
+    return -1;
+#else
+    // ... existing x86 implementation ...
+#endif
+}
+```
+
+**Deliverable:**
+- Code compiles for both x86 and ARM64 (cross-compile)
+- x86 works, ARM64 errors gracefully
+- Commit: "Add ARM64 stub structure (non-functional)"
+
+---
+
+## PHASE 1: FOUNDATION (Days 3-5)
 
 ### 1.1 Platform Detection & Conditional Compilation
 
@@ -860,7 +1023,254 @@ static void arm64_fcmp_s(jit_ctx *ctx, Arm64FpReg r1, Arm64FpReg r2) {
 
 ## PHASE 6: INTEGRATION (Days 20-25)
 
-### 6.1 Map HashLink Opcodes to ARM64
+**⚠️ CRITICAL: This is where ChatGPT identified the hardest parts**
+
+### 6.1 Understanding HashLink's Register Allocator (STUDY FIRST)
+
+**The Reality Check:**
+The plan so far showed simplified examples like:
+```c
+arm64_mov_reg(ctx, dst->id, src->id);  // WRONG - too simple!
+```
+
+**The truth:** `dst->id` is NOT a hardware register - it's a vreg (virtual register) index.
+
+**How HashLink's JIT Really Works:**
+
+```c
+// jit.c has these key structures:
+
+typedef enum {
+    RCPU = 0,    // In a CPU register
+    RFPU = 1,    // In an FPU/SIMD register
+    RSTACK = 2,  // Spilled to stack
+    RCONST = 3,  // Constant value
+    RADDR = 4,   // Address calculation
+    // ...
+} preg_kind;
+
+typedef struct {
+    preg_kind kind;
+    int id;           // Register number OR stack offset
+    vreg *holds;      // Which vreg is currently in this preg
+    int lock;         // Reference count
+} preg;
+
+typedef struct {
+    hl_type *t;
+    int stack_index;
+    preg *current;    // Which preg currently holds this vreg (or NULL if spilled)
+    int size;
+} vreg;
+```
+
+**The Key Functions You MUST Understand:**
+
+```c
+// Load vreg into a physical register
+static void load(jit_ctx *ctx, preg *r, vreg *v);
+
+// Store preg back to vreg's home location
+static void store(jit_ctx *ctx, vreg *r, preg *v, bool bind);
+
+// Bind vreg to preg
+static void reg_bind(vreg *r, preg *p);
+
+// Allocate a physical register
+static preg *alloc_reg(jit_ctx *ctx, preg_kind kind);
+
+// Mark registers as no longer holding their values
+static void discard_regs(jit_ctx *ctx, bool native_call);
+```
+
+**How Opcode Translation REALLY Works:**
+
+```c
+// WRONG (from simplified examples):
+case OMov:
+    arm64_mov_reg(ctx, dst->id, src->id);  // NO!
+    break;
+
+// RIGHT (how it actually works):
+case OMov:
+    vreg *dst_vreg = R(op->p1);  // Get destination vreg
+    vreg *src_vreg = R(op->p2);  // Get source vreg
+
+    // Allocate/get physical registers
+    preg *dst_preg = alloc_reg(ctx, RCPU);
+    preg *src_preg = fetch(src_vreg);
+
+    // Actually emit the move
+    #ifdef HL_ARM64
+        arm64_mov_reg(ctx, dst_preg->id, src_preg->id);
+    #endif
+
+    // Bind result
+    store(ctx, dst_vreg, dst_preg, true);
+    break;
+```
+
+**Study These Functions in jit.c:**
+- Line ~990: `load()` - loads vreg to preg
+- Line ~1237: `store()` - stores preg to vreg
+- Line ~1021: `reg_bind()` - binds vreg to preg
+- Line ~884: `call_reg_index()` - maps AAPCS calling convention
+
+**Action Items for Phase 6:**
+1. Read lines 194-430 in jit.c (vreg/preg structures)
+2. Trace through one opcode (e.g., OAdd) and see how load/store work
+3. Understand how x86 handles register pressure and spilling
+4. Port this logic to ARM64's different register set
+
+**Deliverable:** Deep understanding of vreg→preg system before coding
+
+---
+
+### 6.2 GC Stack Maps and Frame Descriptors (CRITICAL)
+
+**What ChatGPT Caught:** GC needs to know where roots are at safepoints.
+
+**Study the Existing x86 Implementation:**
+
+```c
+// In module.c, line 42-84:
+static bool module_resolve_pos( hl_module *m, void *addr, int *fidx, int *fpos );
+
+// In jit.c, line 4552-4558:
+if( ctx->debug ) {
+    int fid = (int)(f - m->code->functions);
+    ctx->debug[fid].start = codePos;
+    ctx->debug[fid].offsets = debug32 ? (void*)debug32 : (void*)debug16;
+    ctx->debug[fid].large = debug32 != NULL;
+}
+```
+
+**What This Does:**
+- For each function, records where in JIT code it starts
+- For each opcode, records byte offset from function start
+- GC can walk stack and find which opcode was executing
+- Uses this to find live roots
+
+**ARM64 Must Do the Same:**
+
+```c
+// Structure to understand:
+typedef struct {
+    void *offsets;     // Array of opcode byte offsets
+    int start;         // Function start in JIT code
+    bool large;        // Use 32-bit offsets (vs 16-bit)
+} hl_debug_infos;
+```
+
+**The Critical Question:**
+How does HL GC know which registers/stack slots contain GC-managed pointers?
+
+**Answer (need to verify by reading code):**
+- HL types encode whether they're GC-managed (hl_is_ptr)
+- Stack frame layout is predictable from vreg allocation
+- GC can trace types through vregs to find roots
+
+**For ARM64:**
+- Must maintain compatible stack layout
+- Must ensure vreg→stack mapping works with GC
+- May need platform-specific GC root enumeration
+
+**Action Items:**
+1. Read src/gc.c to understand root tracing
+2. Find where x86 JIT cooperates with GC
+3. Ensure ARM64 frame layout is GC-compatible
+4. Test with `hl_gc_profile` and stress tests
+
+**Deliverable:** GC can safely collect in ARM64-JITted code
+
+---
+
+### 6.3 Exception Handling Integration
+
+**Opcodes involved:**
+- `OThrow` - throw exception
+- `OTry` - set up exception handler
+- `OCatch` - catch exception
+
+**Current x86 implementation uses:**
+```c
+// jit.c references to exception handling
+setjmp/longjmp-style unwinding (potentially)
+Stack unwinding with frame info
+```
+
+**ARM64 needs:**
+- Compatible stack frames for unwinding
+- Proper FP chain (X29/FP must be maintained)
+- Ensure exception handler can restore state
+
+**Study:**
+- How OTry sets up handler
+- How OThrow unwinds stack
+- Whether HL uses C++ exceptions or custom unwinding
+
+**Action Items:**
+1. Grep for OThrow/OTry/OCatch in jit.c
+2. Understand unwinding mechanism
+3. Port to ARM64 with proper FP chain
+
+**Deliverable:** Exceptions work on ARM64
+
+---
+
+### 6.4 Validation: Encoding Tests (ChatGPT's Suggestion)
+
+**Create unit tests comparing your encodings vs clang:**
+
+```c
+// test_arm64_encoding.c
+#include <stdint.h>
+#include <stdio.h>
+#include <assert.h>
+
+// Test helper
+void test_encoding(const char *name, uint32_t expected, uint32_t actual) {
+    if (expected != actual) {
+        printf("FAIL: %s\n  Expected: %08x\n  Got:      %08x\n",
+               name, expected, actual);
+        assert(0);
+    }
+    printf("PASS: %s\n", name);
+}
+
+// Generate reference with clang
+void reference_code() {
+    // Compile with: clang -target aarch64-linux-gnu -S -o ref.s ref.c
+    // Then objdump -d to see encodings
+
+    register int64_t x0 asm("x0");
+    register int64_t x1 asm("x1");
+    register int64_t x2 asm("x2");
+
+    x0 = x1 + x2;  // ADD X0, X1, X2
+    x0 = x1 - x2;  // SUB X0, X1, X2
+    x0 = x1 * x2;  // MUL (MADD with XZR)
+}
+
+int main() {
+    // ADD X0, X1, X2 should encode to: 0x8B020020
+    test_encoding("ADD X0, X1, X2", 0x8B020020,
+                  arm64_encode_add(0, 1, 2));
+
+    // SUB X0, X1, X2 should encode to: 0xCB020020
+    test_encoding("SUB X0, X1, X2", 0xCB020020,
+                  arm64_encode_sub(0, 1, 2));
+
+    // ... more tests
+    return 0;
+}
+```
+
+**Deliverable:** All instruction encodings validated
+
+---
+
+### 6.5 Map HashLink Opcodes to ARM64
 
 Create ARM64 versions of the existing opcode handlers. This is where we replace x86 code generation with ARM64.
 
@@ -1249,12 +1659,116 @@ endif
 
 ---
 
+## ADDRESSING CHATGPT's FEEDBACK
+
+**ChatGPT's Assessment:** "The plan outlines maybe 30-40% of the real work, the rest is making it correct and integrating with HashLink's GC, register allocator, and all opcodes."
+
+**Response:** ✅ **INCORPORATED**
+
+### What We Added Based on ChatGPT's Review:
+
+**1. Phase 0: Safe Refactoring (NEW)**
+- Wrap x86 code in conditionals BEFORE adding ARM64
+- Verify nothing breaks
+- Create clean baseline
+- **Can do HERE - no ARM hardware needed**
+
+**2. Register Allocator Deep Dive (Phase 6.1)**
+- Explained vreg vs preg reality
+- Showed how load()/store()/reg_bind() work
+- Corrected oversimplified examples
+- Action items to study existing code
+
+**3. GC Stack Maps (Phase 6.2)**
+- How HL GC finds roots
+- hl_debug_infos structure
+- Frame descriptors
+- Testing with GC stress tests
+
+**4. Exception Handling (Phase 6.3)**
+- OThrow/OTry/OCatch opcodes
+- Stack unwinding requirements
+- FP chain maintenance
+
+**5. Encoding Validation (Phase 6.4)**
+- Unit tests vs clang output
+- Methodology for validation
+- Concrete test examples
+
+**6. Environment Clarity**
+- **Can work HERE:** Phases 0-2 (refactoring, encoders, cross-compile)
+- **Need ARM hardware:** Phases 3+ (execution, GC testing, debugging)
+
+### Timeline Update (More Realistic):
+
+ChatGPT's point: "4-6 weeks is optimistic"
+
+**Updated estimate:**
+- **Phase 0-2 (here):** 1-2 weeks
+- **Get ARM hardware:** Week 3
+- **Phase 3-6 (with hardware):** 3-4 weeks
+- **Phase 7 (testing & debugging):** 1-2 weeks
+- **Total: 5-8 weeks** (more realistic than 4-6)
+
+### The "90% Done" Syndrome
+
+ChatGPT warned: "You get tests like add, loops, trace working. Then you hit weird GC or exception bugs that are painful to debug."
+
+**Mitigation:**
+- Start GC testing EARLY (Phase 4, not Phase 7)
+- Test exceptions EARLY
+- Don't wait for "full implementation" to stress-test
+- Incremental integration prevents big-bang surprises
+
+### What's Still Missing (Acknowledged):
+
+**Complex opcodes we haven't detailed:**
+- `OCallClosure` - closure calling convention
+- `OStaticClosure`, `OInstanceClosure`, `OVirtualClosure`
+- `ODynGet`, `ODynSet` - dynamic field access
+- `OToSFloat`, `OToDyn`, `OToVirtual` - type conversions
+- `OSwitch` - switch table generation
+- `ONop` through all others in opcodes.h
+
+**Strategy:**
+- Phase 2: Get simple ops working (mov, add, cmp, branch)
+- Phase 4: Study x86 implementation of complex ops
+- Phase 6: Port complex ops one at a time with tests
+
+### Honest Assessment:
+
+**Feasibility:** ✅ YES - absolutely doable
+**Complexity:** ⚠️ HIGH - not trivial
+**Timeline:** 📅 5-8 weeks realistic (not 2-3)
+**Risk:** 🎯 Manageable with incremental approach
+
+**The plan is now:**
+- ✅ 30% instruction encoding (detailed)
+- ✅ 40% integration complexity (now addressed)
+- ✅ 20% testing & debugging (phased approach)
+- ✅ 10% unexpected issues (buffered)
+
+---
+
 ## NEXT STEPS
 
 **Immediate actions:**
-1. Create feature branch
-2. Set up ARM64 development environment
-3. Begin Phase 1: Foundation
-4. Commit and test incrementally
+1. **START HERE:** Begin Phase 0 (no ARM hardware needed)
+2. Refactor jit.c to dual-backend structure
+3. Verify x86 still works
+4. Add ARM64 stubs
+5. Commit incremental changes
 
-**Ready to begin implementation?**
+**Week 2-3:**
+- Implement ARM64 instruction encoders
+- Cross-compile to catch build errors
+- Create encoding validation tests
+- **Order Raspberry Pi or set up ARM dev environment**
+
+**Week 3+:**
+- Port to ARM hardware
+- Iterate: code here, test there
+- Debug GC and exception issues
+- Expand opcode coverage
+
+**Ready to begin Phase 0?** We can start refactoring RIGHT NOW.
