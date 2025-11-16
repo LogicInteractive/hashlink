@@ -488,4 +488,5 @@ endif()
 
 include(CPack)
 
-add_subdirectory(libs)
+# Temporarily skip libs for WASM minimal build
+# add_subdirectory(libs)
