@@ -3151,6 +3151,11 @@ static void arm_mov_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64);
 static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64);
 static void arm_ret(jit_ctx *ctx, Arm64Reg rn);
 static void arm_load_imm64(jit_ctx *ctx, Arm64Reg rd, uint64_t imm);
+static void arm_tst_reg(jit_ctx *ctx, Arm64Reg rn, Arm64Reg rm, bool is64);
+static int arm_b(jit_ctx *ctx, int offset);
+static int arm_b_cond(jit_ctx *ctx, Arm64Condition cond, int offset);
+static int arm_cbz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64);
+static int arm_cbnz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64);
 #endif
 
 int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
