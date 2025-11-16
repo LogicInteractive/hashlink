@@ -4,22 +4,36 @@ This directory contains a proof-of-concept for running HashLink HL-C compiled pr
 
 ## 🎯 Try It Without Installing Anything!
 
-**Want to see what the POC looks like without setting up Emscripten/Haxe?**
+### Option 1: Real WASM Binary (Recommended!)
 
-Just open **`demo.html`** in your browser:
-- ✅ No installation required
-- ✅ No build process needed
-- ✅ Shows simulated test output
-- ✅ Demonstrates the UI and expected results
+**We've included an actual compiled WebAssembly binary!**
+
+Open **`hello_wasm_demo.html`** to see a REAL WASM module running:
+- ✅ **Actual .wasm file** (11 KB) - not a simulation!
+- ✅ Compiled with Emscripten
+- ✅ Proves the build system works
+- ✅ Runs immediately in any browser
 
 ```bash
-# Just open the file in any browser
-open wasm/demo.html         # macOS
-xdg-open wasm/demo.html     # Linux
-start wasm\demo.html        # Windows CMD
+open wasm/hello_wasm_demo.html      # macOS
+xdg-open wasm/hello_wasm_demo.html  # Linux
+start wasm\hello_wasm_demo.html     # Windows
 ```
 
-Or simply **double-click `demo.html`** in your file explorer!
+This is a **real WebAssembly module** that executes in your browser!
+
+### Option 2: Simulated Demo
+
+Open **`demo.html`** for a simulation of what the full HashLink POC produces:
+- Shows simulated HashLink test output
+- Interactive UI demonstration
+- No actual WASM (just HTML/JS simulation)
+
+```bash
+open wasm/demo.html         # macOS
+xdg-open wasm/demo.html     # Linux
+start wasm\demo.html        # Windows
+```
 
 ---
 
