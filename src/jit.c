@@ -5136,6 +5136,337 @@ static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int im
 }
 
 // =====================================================================
+// ARM64 Instruction Encoders - Multiply/Divide
+// =====================================================================
+
+// MUL (multiply): rd = rn * rm (lower 64 bits)
+// Encoded as MADD with Ra = XZR: rd = ra + (rn * rm), where ra=0
+// Format: sf 0 011011 000 Rm(5) 0 Ra(5) Rn(5) Rd(5)
+static void arm_mul(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// MADD: rd = XZR + (rn * rm) = rn * rm
+	unsigned int inst = (sf << 31) | (0x1B << 24) |
+	                    (arm_reg(rm) << 16) | (31 << 10) |  // Ra = XZR (31)
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// UDIV (unsigned divide): rd = rn / rm
+// Format: sf 0 011010 110 Rm(5) 00001 0 Rn(5) Rd(5)
+static void arm_udiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1A << 24) | (0x6 << 21) |
+	                    (arm_reg(rm) << 16) | (0x2 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// SDIV (signed divide): rd = rn / rm
+// Format: sf 0 011010 110 Rm(5) 00001 1 Rn(5) Rd(5)
+static void arm_sdiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1A << 24) | (0x6 << 21) |
+	                    (arm_reg(rm) << 16) | (0x3 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// MADD (multiply-add): rd = ra + (rn * rm)
+// Format: sf 0 011011 000 Rm(5) 0 Ra(5) Rn(5) Rd(5)
+static void arm_madd(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, Arm64Reg ra, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1B << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(ra) << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// MSUB (multiply-subtract): rd = ra - (rn * rm)
+// Format: sf 0 011011 000 Rm(5) 1 Ra(5) Rn(5) Rd(5)
+static void arm_msub(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, Arm64Reg ra, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1B << 24) |
+	                    (arm_reg(rm) << 16) | (1 << 15) | (arm_reg(ra) << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// =====================================================================
+// ARM64 Instruction Encoders - Bitwise Operations
+// =====================================================================
+
+// AND (register): rd = rn & rm
+// Format: sf 00 01010 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_and_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x0A << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// ORR (register): rd = rn | rm
+// Format: sf 01 01010 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_orr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x2A << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// EOR (register): rd = rn ^ rm (XOR)
+// Format: sf 10 01010 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_eor_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x4A << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// BIC (bit clear): rd = rn & ~rm
+// Format: sf 00 01010 shift(2) 1 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_bic_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x0A << 24) | (1 << 21) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// LSL (logical shift left): rd = rn << shift
+// Implemented using UBFM (unsigned bitfield move)
+// Format: sf 10 100110 N immr(6) imms(6) Rn(5) Rd(5)
+static void arm_lsl_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int shift, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int n = is64 ? 1 : 0;
+	unsigned int size = is64 ? 64 : 32;
+
+	if (shift >= size) {
+		ASSERT(17);
+		return;
+	}
+
+	// LSL is alias for UBFM with immr = -shift mod size, imms = size - 1 - shift
+	unsigned int immr = (size - shift) & (size - 1);
+	unsigned int imms = (size - 1 - shift) & (size - 1);
+
+	unsigned int inst = (sf << 31) | (0x26 << 23) | (n << 22) |
+	                    (immr << 16) | (imms << 10) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// LSR (logical shift right): rd = rn >> shift (unsigned)
+// Format: sf 10 100110 N immr(6) imms(6) Rn(5) Rd(5)
+static void arm_lsr_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int shift, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int n = is64 ? 1 : 0;
+	unsigned int size = is64 ? 64 : 32;
+
+	if (shift >= size) {
+		ASSERT(18);
+		return;
+	}
+
+	// LSR is alias for UBFM with immr = shift, imms = size - 1
+	unsigned int immr = shift;
+	unsigned int imms = size - 1;
+
+	unsigned int inst = (sf << 31) | (0x26 << 23) | (n << 22) |
+	                    (immr << 16) | (imms << 10) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// ASR (arithmetic shift right): rd = rn >> shift (signed)
+// Format: sf 00 100110 N immr(6) imms(6) Rn(5) Rd(5)
+static void arm_asr_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int shift, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int n = is64 ? 1 : 0;
+	unsigned int size = is64 ? 64 : 32;
+
+	if (shift >= size) {
+		ASSERT(19);
+		return;
+	}
+
+	// ASR is alias for SBFM with immr = shift, imms = size - 1
+	unsigned int immr = shift;
+	unsigned int imms = size - 1;
+
+	unsigned int inst = (sf << 31) | (0x13 << 23) | (n << 22) |
+	                    (immr << 16) | (imms << 10) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// =====================================================================
+// ARM64 Instruction Encoders - Compare/Test
+// =====================================================================
+
+// CMP (compare): flags = rn - rm (sets NZCV flags)
+// Implemented as SUBS with Rd = XZR
+// Format: sf 1 1 01011 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_cmp_reg(jit_ctx *ctx, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// SUBS XZR, Rn, Rm
+	unsigned int inst = (sf << 31) | (3 << 29) | (0x0B << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | 31;  // Rd = XZR
+	B32(inst);
+}
+
+// CMP (immediate): flags = rn - imm12
+// Implemented as SUBS with Rd = XZR
+// Format: sf 1 1 100010 shift(2) imm12(12) Rn(5) Rd(5)
+static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64) {
+	if (!arm_fits_unsigned(imm12, 12)) {
+		ASSERT(20);
+		return;
+	}
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (3 << 29) | (0x11 << 24) |
+	                    (imm12 << 10) | (arm_reg(rn) << 5) | 31;  // Rd = XZR
+	B32(inst);
+}
+
+// CMN (compare negative): flags = rn + rm
+// Implemented as ADDS with Rd = XZR
+// Format: sf 0 1 01011 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_cmn_reg(jit_ctx *ctx, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// ADDS XZR, Rn, Rm
+	unsigned int inst = (sf << 31) | (1 << 29) | (0x0B << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | 31;  // Rd = XZR
+	B32(inst);
+}
+
+// TST (test): flags = rn & rm (sets flags, discards result)
+// Implemented as ANDS with Rd = XZR
+// Format: sf 11 01010 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_tst_reg(jit_ctx *ctx, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// ANDS XZR, Rn, Rm
+	unsigned int inst = (sf << 31) | (3 << 29) | (0x0A << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | 31;  // Rd = XZR
+	B32(inst);
+}
+
+// NEG (negate): rd = 0 - rn
+// Implemented as SUB rd, XZR, rn
+static void arm_neg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// SUB Rd, XZR, Rn
+	unsigned int inst = (sf << 31) | (2 << 29) | (0x0B << 24) |
+	                    (arm_reg(rn) << 16) | (31 << 5) | arm_reg(rd);  // Rn2 = XZR
+	B32(inst);
+}
+
+// MVN (bitwise NOT): rd = ~rm
+// Implemented as ORN rd, XZR, rm (rd = XZR | ~rm = ~rm)
+static void arm_mvn(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// ORN Rd, XZR, Rm
+	unsigned int inst = (sf << 31) | (0x2A << 24) | (1 << 21) |
+	                    (arm_reg(rm) << 16) | (31 << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// =====================================================================
+// ARM64 Instruction Encoders - Floating Point Operations
+// =====================================================================
+
+// FADD (floating-point add): fd = fn + fm
+// Format: M 0 S 11110 ftype(2) 1 Rm(5) 001010 Rn(5) Rd(5)
+static void arm_fadd(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, Arm64FpReg fm, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;  // 0=32-bit (S), 1=64-bit (D)
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (arm_reg(fm) << 16) | (0x0A << 10) |
+	                    (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FSUB (floating-point subtract): fd = fn - fm
+// Format: M 0 S 11110 ftype(2) 1 Rm(5) 001110 Rn(5) Rd(5)
+static void arm_fsub(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, Arm64FpReg fm, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (arm_reg(fm) << 16) | (0x0E << 10) |
+	                    (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FMUL (floating-point multiply): fd = fn * fm
+// Format: M 0 S 11110 ftype(2) 1 Rm(5) 000010 Rn(5) Rd(5)
+static void arm_fmul(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, Arm64FpReg fm, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (arm_reg(fm) << 16) | (0x02 << 10) |
+	                    (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FDIV (floating-point divide): fd = fn / fm
+// Format: M 0 S 11110 ftype(2) 1 Rm(5) 000110 Rn(5) Rd(5)
+static void arm_fdiv(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, Arm64FpReg fm, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (arm_reg(fm) << 16) | (0x06 << 10) |
+	                    (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FNEG (floating-point negate): fd = -fn
+// Format: M 0 S 11110 ftype(2) 1 000000 010000 Rn(5) Rd(5)
+static void arm_fneg(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x40 << 10) | (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FABS (floating-point absolute value): fd = |fn|
+// Format: M 0 S 11110 ftype(2) 1 000000 010001 Rn(5) Rd(5)
+static void arm_fabs(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x41 << 10) | (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FSQRT (floating-point square root): fd = sqrt(fn)
+// Format: M 0 S 11110 ftype(2) 1 000000 010011 Rn(5) Rd(5)
+static void arm_fsqrt(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x43 << 10) | (arm_reg(fn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FCMP (floating-point compare): flags = fn - fm
+// Format: M 0 S 11110 ftype(2) 1 Rm(5) 00 1000 Rn(5) opcode2(5)
+static void arm_fcmp(jit_ctx *ctx, Arm64FpReg fn, Arm64FpReg fm, bool is64) {
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (arm_reg(fm) << 16) | (0x08 << 10) | (arm_reg(fn) << 5);
+	B32(inst);
+}
+
+// FMOV (floating-point to general register): rd = fn
+// Format: sf 0 S 11110 ftype(2) 1 00 110 000000 Rn(5) Rd(5)
+static void arm_fmov_to_gen(jit_ctx *ctx, Arm64Reg rd, Arm64FpReg fn, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x18 << 10) | (arm_reg(fn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// FMOV (general register to floating-point): fd = rn
+// Format: sf 0 S 11110 ftype(2) 1 00 111 000000 Rn(5) Rd(5)
+static void arm_fmov_from_gen(jit_ctx *ctx, Arm64FpReg fd, Arm64Reg rn, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int ftype = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x1C << 10) | (arm_reg(rn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// =====================================================================
 // ARM64 Instruction Encoders - Branch Instructions
 // =====================================================================
 
