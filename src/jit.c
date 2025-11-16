@@ -29,15 +29,18 @@
 // =====================================================================
 // Architecture Detection
 // =====================================================================
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-#   define HL_JIT_X86
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#   define HL_JIT_ARM64
-#elif defined(__arm__) || defined(_M_ARM)
-#   define HL_JIT_ARM32
-#   error "JIT: ARM32 not yet implemented, please use ARM64 (AArch64) or x86-64"
-#else
-#   error "JIT: Unsupported processor architecture (only x86/x86-64 and ARM64 supported)"
+// Allow manual override via -DHL_JIT_ARM64 or -DHL_JIT_X86
+#if !defined(HL_JIT_X86) && !defined(HL_JIT_ARM64) && !defined(HL_JIT_ARM32)
+#   if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#       define HL_JIT_X86
+#   elif defined(__aarch64__) || defined(_M_ARM64)
+#       define HL_JIT_ARM64
+#   elif defined(__arm__) || defined(_M_ARM)
+#       define HL_JIT_ARM32
+#       error "JIT: ARM32 not yet implemented, please use ARM64 (AArch64) or x86-64"
+#   else
+#       error "JIT: Unsupported processor architecture (only x86/x86-64 and ARM64 supported)"
+#   endif
 #endif
 
 #ifdef HL_DEBUG
@@ -2551,6 +2554,7 @@ void hl_jit_free( jit_ctx *ctx, h_bool can_reset ) {
 	if( !can_reset ) free(ctx);
 }
 
+#ifdef HL_JIT_X86
 static void jit_nops( jit_ctx *ctx ) {
 	while( BUF_POS() & 15 )
 		op32(ctx, NOP, UNUSED, UNUSED);
@@ -3125,11 +3129,23 @@ static void make_dyn_cast( jit_ctx *ctx, vreg *dst, vreg *v ) {
 	store_result(ctx, dst);
 }
 
+#endif // HL_JIT_X86
+
+// Forward declarations for ARM64 encoders (defined later in file)
+#ifdef HL_JIT_ARM64
+static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
+static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
+static void arm_add_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_ret(jit_ctx *ctx, Arm64Reg rn);
+static void arm_load_imm64(jit_ctx *ctx, Arm64Reg rd, uint64_t imm);
+#endif
+
 int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
-#ifndef HL_JIT_X86
-	hl_error("JIT compilation only supported on x86/x86-64 (ARM64 implementation in progress)");
+#if !defined(HL_JIT_X86) && !defined(HL_JIT_ARM64)
+	hl_error("JIT compilation only supported on x86/x86-64 and ARM64");
 	return -1;
-#else
+#endif
+#ifdef HL_JIT_X86
 	int i, size = 0, opCount;
 	int codePos = BUF_POS();
 	int nargs = f->type->fun->nargs;
@@ -4809,7 +4825,81 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// reset tmp allocator
 	hl_free(&ctx->falloc);
 	return codePos;
-#endif // HL_JIT_X86
+#elif defined(HL_JIT_ARM64)
+	// ARM64 JIT implementation (Phase 3 - Minimal operations)
+	int i, opCount;
+	int codePos = ARM_BUF_POS();
+	int nargs = f->type->fun->nargs;
+	hl_opcode *o = f->ops;
+	vreg *dst, *ra, *rb;
+	preg p;
+
+	ctx->f = f;
+	ctx->allocOffset = 0;
+
+	// Allocate vreg array
+	if( f->nregs > ctx->maxRegs ) {
+		free(ctx->vregs);
+		ctx->vregs = (vreg*)malloc(sizeof(vreg) * (f->nregs + 1));
+		if( ctx->vregs == NULL ) {
+			ctx->maxRegs = 0;
+			return -1;
+		}
+		ctx->maxRegs = f->nregs;
+	}
+
+	// Initialize vregs
+	for(i=0;i<f->nregs;i++) {
+		vreg *r = R(i);
+		r->t = f->regs[i];
+		r->size = hl_type_size(r->t);
+		r->current = NULL;
+		r->stack.kind = RSTACK;
+		r->stack.id = 0; // Will be set by stack allocation
+	}
+
+	// Simple function prologue - save FP and LR
+	// Note: SP is register 31 in ARM64, overlaps with XZR
+	arm_stp(ctx, X29, X30, (Arm64Reg)31, -16, true, true);  // stp x29, x30, [sp, #-16]!
+
+	// Process bytecode operations
+	for(opCount=0;opCount<f->nops;opCount++,o++) {
+		// Setup dst, ra, rb based on operation
+		dst = o->p1 < f->nregs ? R(o->p1) : NULL;
+		ra = o->p2 < f->nregs ? R(o->p2) : NULL;
+		rb = o->p3 < f->nregs ? R(o->p3) : NULL;
+
+		// Minimal operation switch - only essential ops
+		switch( o->op ) {
+		case OMov:
+			// TODO: Implement register move
+			hl_error("ARM64 JIT: OMov not yet implemented");
+			break;
+		case OInt:
+			// Load integer constant: dst = m->code->ints[o->p2]
+			{
+				int64_t val = m->code->ints[o->p2];
+				// For now, just load into X0 (simplified)
+				arm_load_imm64(ctx, X0, (uint64_t)val);
+			}
+			break;
+		case OAdd:
+			// dst = ra + rb (simplified: X0 = X0 + X1)
+			arm_add_reg(ctx, X0, X0, X1, true);
+			break;
+		case ORet:
+			// Restore FP and LR, return
+			arm_ldp(ctx, X29, X30, (Arm64Reg)31, 16, true, false);  // ldp x29, x30, [sp], #16
+			arm_ret(ctx, X30);
+			break;
+		default:
+			jit_error(hl_op_name(o->op));
+			break;
+		}
+	}
+
+	return codePos;
+#endif // HL_JIT_ARM64
 }
 
 // =====================================================================
@@ -5107,29 +5197,37 @@ static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 	B32(inst);
 }
 
-// LDP (load pair): Load two registers from [rn + (imm7 << size)]
-// Format: opc(2) 101 0 010 1 imm7(7) Rt2(5) Rn(5) Rt(5)
-static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int imm7, bool is64) {
+// LDP (load pair): Load two registers from memory
+// pre_index=true: [rn, #offset]! (pre-indexed, writeback)
+// pre_index=false: [rn], #offset (post-indexed, writeback)
+// Format: opc(2) 101 0 01(pre) imm7(7) Rt2(5) Rn(5) Rt(5)
+static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index) {
+	int imm7 = offset / (is64 ? 8 : 4);  // offset in units of register size
 	if (!arm_fits_signed(imm7, 7)) {
 		ASSERT(7);
 		return;
 	}
 	unsigned int opc = is64 ? 2 : 0;
-	unsigned int inst = (opc << 30) | (0x29 << 25) | (1 << 23) |
+	unsigned int mode = pre_index ? 3 : 1;  // 11=pre-indexed, 01=post-indexed
+	unsigned int inst = (opc << 30) | (0x28 << 25) | (mode << 23) |
 	                    ((imm7 & 0x7F) << 15) | (arm_reg(rt2) << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
 
-// STP (store pair): Store two registers to [rn + (imm7 << size)]
-// Format: opc(2) 101 0 010 0 imm7(7) Rt2(5) Rn(5) Rt(5)
-static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int imm7, bool is64) {
+// STP (store pair): Store two registers to memory
+// pre_index=true: [rn, #offset]! (pre-indexed, writeback)
+// pre_index=false: [rn], #offset (post-indexed, writeback)
+// Format: opc(2) 101 0 01(pre) imm7(7) Rt2(5) Rn(5) Rt(5)
+static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index) {
+	int imm7 = offset / (is64 ? 8 : 4);  // offset in units of register size
 	if (!arm_fits_signed(imm7, 7)) {
 		ASSERT(8);
 		return;
 	}
 	unsigned int opc = is64 ? 2 : 0;
-	unsigned int inst = (opc << 30) | (0x29 << 25) | (0 << 23) |
+	unsigned int mode = pre_index ? 3 : 1;  // 11=pre-indexed, 01=post-indexed
+	unsigned int inst = (opc << 30) | (0x28 << 25) | (mode << 23) |
 	                    ((imm7 & 0x7F) << 15) | (arm_reg(rt2) << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
@@ -5660,8 +5758,12 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 			arm_load_imm64(ctx, X9, framesize);
 			arm_sub_reg(ctx, XZR, XZR, X9, true);
 		}
-		// stp x29, x30, [sp]
-		arm_stp(ctx, X29, X30, XZR, 0, true);
+		// stp x29, x30, [sp] - offset mode (no writeback)
+		// For offset mode, we'll manually encode since our function only does writeback modes
+		// TODO: add offset mode support to arm_stp
+		unsigned int inst = (2 << 30) | (0x29 << 25) | (2 << 23) |  // offset mode
+		                    (0 << 15) | (30 << 10) | (31 << 5) | 29;
+		B32(inst);
 	} else {
 		// STP with pre-index (encoded differently than post-index)
 		unsigned int inst = (2 << 30) | (0x29 << 25) | (3 << 23) |  // pre-index mode
@@ -5691,8 +5793,11 @@ static void arm_epilogue(jit_ctx *ctx, int framesize) {
 	// LDP with post-index: ldp x29, x30, [sp], #framesize
 	int imm7 = framesize >> 3;  // Offset in units of 8 bytes
 	if (!arm_fits_signed(imm7, 7)) {
-		// Frame too large, restore in steps
-		arm_ldp(ctx, X29, X30, XZR, 0, true);  // ldp x29, x30, [sp]
+		// Frame too large, restore in steps - use offset mode (no writeback)
+		// TODO: add offset mode support to arm_ldp
+		unsigned int inst = (2 << 30) | (0x29 << 25) | (2 << 23) |  // offset mode
+		                    (0 << 15) | (30 << 10) | (31 << 5) | 29;
+		B32(inst);
 		// add sp, sp, #framesize
 		if (framesize <= 4095) {
 			arm_add_imm(ctx, XZR, XZR, framesize, true);
