@@ -45,10 +45,10 @@ echo "  Threading: DISABLED"
 echo ""
 
 emcmake cmake "$PROJECT_ROOT" \
-    -DCMAKE_TOOLCHAIN_FILE="$PROJECT_ROOT/cmake/Emscripten.cmake" \
     -DCMAKE_BUILD_TYPE=MinSizeRel \
     -DWITH_VM=OFF \
-    -DBUILD_SHARED_LIBS=OFF
+    -DBUILD_SHARED_LIBS=OFF \
+    -DHL_NO_THREADS=ON
 
 # Build
 echo ""

@@ -58,6 +58,16 @@ if (MINGW)
     add_link_options(-municode)
 endif()
 
+# Emscripten/WASM configuration
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_compile_definitions(HL_EMSCRIPTEN HL_NO_THREADS)
+    set(BUILD_TESTING OFF CACHE BOOL "Disable tests for WASM" FORCE)
+    message(STATUS "Configuring for Emscripten/WASM build")
+    message(STATUS "  HL_EMSCRIPTEN: ON")
+    message(STATUS "  HL_NO_THREADS: ON")
+    message(STATUS "  BUILD_TESTING: OFF")
+endif()
+
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/other/cmake
 )
@@ -488,5 +498,8 @@ endif()
 
 include(CPack)
 
-# Temporarily skip libs for WASM minimal build
-# add_subdirectory(libs)
+# Skip extended libraries when building for WASM/Emscripten
+# These libraries (SDL, OpenAL, DirectX, etc.) are not needed for minimal WASM builds
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_subdirectory(libs)
+endif()
