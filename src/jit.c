@@ -5673,6 +5673,343 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 
 
+	// =====================================================================
+	// Global Variable Operations
+	// =====================================================================
+
+	case OGetGlobal:
+		{
+			// Load from globals_data + globals_indexes[p2]
+			void *addr = m->globals_data + m->globals_indexes[o->p2];
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+				// Load address into X9
+				arm_load_imm64(ctx, X9, (uint64_t)addr);
+				// LDR rd, [X9]
+				arm_ldr_imm(ctx, rd, X9, 0, 3);
+			}
+		}
+		break;
+
+	case OSetGlobal:
+		{
+			// Store to globals_data + globals_indexes[p1]
+			void *addr = m->globals_data + m->globals_indexes[o->p1];
+			if (ra) {
+				Arm64Reg rn = GET_REG(ra);
+				// Load address into X9
+				arm_load_imm64(ctx, X9, (uint64_t)addr);
+				// STR rn, [X9]
+				arm_str_imm(ctx, rn, X9, 0, 3);
+			}
+		}
+		break;
+
+	// =====================================================================
+	// Pointer/Reference Operations
+	// =====================================================================
+
+	case ORefData:
+		{
+			// Get pointer to data section of arrays/strings
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+
+				switch (ra->t->kind) {
+				case HARRAY:
+				case HVIRTUAL:
+					// For arrays: data is at offset 8 (after length field)
+					arm_add_imm(ctx, rd, rn, 8, true);
+					break;
+				case HBYTES:
+					// For bytes: data follows header
+					arm_add_imm(ctx, rd, rn, sizeof(vbyte*), true);
+					break;
+				default:
+					// Default: just copy the pointer
+					if (rd != rn) {
+						arm_mov_reg(ctx, rd, rn, true);
+					}
+					break;
+				}
+			}
+		}
+		break;
+
+	case ORefOffset:
+		{
+			// dst = ra + rb (pointer arithmetic)
+			if (dst && ra && rb) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				Arm64Reg rm = GET_REG(rb);
+				// ADD rd, rn, rm
+				arm_add_reg(ctx, rd, rn, rm, true);
+			}
+		}
+		break;
+
+	case OGetType:
+		{
+			// Get runtime type of a value
+			// If value is NULL, return &hlt_void, otherwise get type from object header
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+
+				// CBZ rn, null_case
+				int null_jump = arm_do_cbz(ctx, rn, true);
+
+				// Not null: load type from offset -HL_WSIZE
+				arm_ldr_imm(ctx, rd, rn, -HL_WSIZE, 3);
+
+				// Jump over null case
+				int end_jump = arm_do_jump(ctx);
+
+				// null_case: load &hlt_void
+				arm_patch_cbz(ctx, null_jump, ARM_BUF_POS());
+				arm_load_imm64(ctx, rd, (uint64_t)&hlt_void);
+
+				// end:
+				arm_patch_jump(ctx, end_jump);
+			}
+		}
+		break;
+
+	// =====================================================================
+	// Advanced Call Operations
+	// =====================================================================
+
+	case OCallN:
+		{
+			// Function call with N arguments (p3 = arg count, extra = arg registers)
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				int nargs = o->p3;
+
+				// Move arguments to X0-X7 in reverse order
+				for (int i = nargs - 1; i >= 0; i--) {
+					vreg *arg = hl_get_reg(f, o->extra[i]);
+					if (arg && i < 8) {
+						Arm64Reg target = (Arm64Reg)(X0 + i);
+						Arm64Reg source = GET_REG(arg);
+						if (source != target) {
+							arm_mov_reg(ctx, target, source, true);
+						}
+					}
+				}
+
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+
+				// BLR X9
+				B32(0xd63f0120);
+
+				// Result in X0
+				if (dst) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			}
+		}
+		break;
+
+	case OCallMethod:
+	case OCallThis:
+	case OCallClosure:
+		// These require virtual dispatch and closure support
+		// TODO: Implement when closure infrastructure is ready
+		jit_error("Closures and virtual calls not yet implemented in ARM64");
+		break;
+
+	// =====================================================================
+	// Object/Memory Allocation
+	// =====================================================================
+
+	case ONew:
+		{
+			// Allocate new object - calls hl_alloc_obj/hl_alloc_dynobj/etc
+			void *allocFun = NULL;
+			uint64_t type_arg = (uint64_t)dst->t;
+
+			switch (dst->t->kind) {
+			case HOBJ:
+			case HSTRUCT:
+				allocFun = hl_alloc_obj;
+				break;
+			case HDYNOBJ:
+				allocFun = hl_alloc_dynobj;
+				break;
+			default:
+				break;
+			}
+
+			if (allocFun && dst) {
+				// Set up argument X0 = type
+				arm_load_imm64(ctx, X0, type_arg);
+
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)allocFun);
+
+				// BLR X9
+				B32(0xd63f0120);
+
+				// Result in X0
+				Arm64Reg rd = GET_REG(dst);
+				if (rd != X0) {
+					arm_mov_reg(ctx, rd, X0, true);
+				}
+			}
+		}
+		break;
+
+	case ONullCheck:
+		{
+			// Check if value is null, throw exception if so
+			if (dst) {
+				Arm64Reg rd = GET_REG(dst);
+
+				// CBNZ rd, not_null
+				int not_null = arm_do_cbnz(ctx, rd, true);
+
+				// Null case: call hl_null_access() or similar
+				// For now, just trigger error
+				// TODO: Proper exception handling
+				arm_load_imm64(ctx, X0, 0);  // Set error code
+				// Would call exception handler here
+
+				// not_null:
+				arm_patch_cbnz(ctx, not_null, ARM_BUF_POS());
+			}
+		}
+		break;
+
+	// =====================================================================
+	// Control Flow
+	// =====================================================================
+
+	case OSwitch:
+		{
+			// Switch statement - compare value against cases and jump
+			// p1 = value register, p2 = case count, p3 = default offset
+			// extra = array of (value, jump_offset) pairs
+
+			if (ra) {
+				Arm64Reg rn = GET_REG(ra);
+				int ncases = o->p2;
+				int default_offset = o->p3;
+				int *cases = (int*)o->extra;
+
+				// Try each case
+				for (int i = 0; i < ncases; i++) {
+					int case_value = cases[i * 2];
+					int case_offset = cases[i * 2 + 1];
+
+					// CMP rn, #case_value
+					if (case_value < 4096) {
+						arm_cmp_imm(ctx, rn, case_value, true);
+					} else {
+						arm_load_imm64(ctx, X9, case_value);
+						arm_subs_reg(ctx, (Arm64Reg)31, rn, X9, true);
+					}
+
+					// B.EQ to case
+					int jump = arm_do_jump_cond(ctx, ARM64_COND_EQ);
+					register_jump(ctx, jump, (opCount + 1) + case_offset);
+				}
+
+				// No match: jump to default
+				int default_jump = arm_do_jump(ctx);
+				register_jump(ctx, default_jump, (opCount + 1) + default_offset);
+			}
+		}
+		break;
+
+	// =====================================================================
+	// Enum Operations
+	// =====================================================================
+
+	case OEnumAlloc:
+	case OEnumIndex:
+	case OEnumField:
+	case OMakeEnum:
+	case OSetEnumField:
+		// Enum operations require enum runtime support
+		jit_error("Enum operations not yet implemented in ARM64");
+		break;
+
+	// =====================================================================
+	// Floating Point Operations
+	// =====================================================================
+
+	case OFloat:
+	case OToSFloat:
+	case OToUFloat:
+		// Float operations require FPU register allocation
+		jit_error("Floating point operations not yet implemented in ARM64");
+		break;
+
+	// =====================================================================
+	// Dynamic Operations
+	// =====================================================================
+
+	case ODynGet:
+	case ODynSet:
+		// Dynamic field access requires runtime lookup
+		jit_error("Dynamic operations not yet implemented in ARM64");
+		break;
+
+	// =====================================================================
+	// Exception Handling
+	// =====================================================================
+
+	case OTrap:
+	case OEndTrap:
+	case OThrow:
+	case ORethrow:
+		// Exception handling requires trap stack management
+		jit_error("Exception handling not yet implemented in ARM64");
+		break;
+
+	// =====================================================================
+	// Closure Operations
+	// =====================================================================
+
+	case OStaticClosure:
+	case OInstanceClosure:
+	case OVirtualClosure:
+		// Closures require closure allocation and binding
+		jit_error("Closure operations not yet implemented in ARM64");
+		break;
+
+	// =====================================================================
+	// Miscellaneous
+	// =====================================================================
+
+	case OPrefetch:
+		// Prefetch is a performance hint, can be no-op
+		break;
+
+	case OToVirtual:
+		// Convert to virtual - usually just a pointer copy
+		if (dst && ra) {
+			Arm64Reg rd = GET_REG(dst);
+			Arm64Reg rn = GET_REG(ra);
+			if (rd != rn) {
+				arm_mov_reg(ctx, rd, rn, true);
+			}
+		}
+		break;
+
+	case OAssert:
+	case OAsm:
+	case OCatch:
+		// Special operations
+		break;
+
 		default:
 			jit_error(hl_op_name(o->op));
 			break;
