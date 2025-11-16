@@ -4951,6 +4951,31 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_udiv(ctx, rd, rn, rm, true);
 			}
 			break;
+		case OSMod:
+			// dst = ra % rb (signed modulo)
+			// ARM64 doesn't have MOD instruction, compute as: a % b = a - (a/b)*b
+			if (dst && ra && rb) {
+				Arm64Reg temp = X9;  // Use X9 as temporary
+				// temp = ra / rb (signed division)
+				arm_sdiv(ctx, temp, rn, rm, true);
+				// temp = temp * rb
+				arm_mul(ctx, temp, temp, rm, true);
+				// dst = ra - temp
+				arm_sub_reg(ctx, rd, rn, temp, true);
+			}
+			break;
+		case OUMod:
+			// dst = ra % rb (unsigned modulo)
+			if (dst && ra && rb) {
+				Arm64Reg temp = X9;  // Use X9 as temporary
+				// temp = ra / rb (unsigned division)
+				arm_udiv(ctx, temp, rn, rm, true);
+				// temp = temp * rb
+				arm_mul(ctx, temp, temp, rm, true);
+				// dst = ra - temp
+				arm_sub_reg(ctx, rd, rn, temp, true);
+			}
+			break;
 		case OAnd:
 			// dst = ra & rb (bitwise AND)
 			if (dst && ra && rb) {
@@ -5113,6 +5138,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		case OJSGt:
 		case OJULt:
 		case OJUGte:
+		case OJNotLt:
+		case OJNotGte:
 			{
 				// Comparison jumps: compare dst and ra, then jump based on condition
 				// dst = first operand, ra = second operand
@@ -5134,6 +5161,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					case OJSGt:   cond = ARM64_COND_GT; break;  // Signed Greater Than
 					case OJULt:   cond = ARM64_COND_LO; break;  // Unsigned Less Than
 					case OJUGte:  cond = ARM64_COND_HS; break;  // Unsigned Greater or Equal
+					case OJNotLt: cond = ARM64_COND_GE; break;  // Not Less Than (>=)
+					case OJNotGte:cond = ARM64_COND_LT; break;  // Not Greater or Equal (<)
 					default:      cond = ARM64_COND_AL; break;  // Always (shouldn't happen)
 				}
 

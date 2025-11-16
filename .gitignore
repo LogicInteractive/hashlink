@@ -60,3 +60,5 @@ args.txt
 /test_jump_operations
 /test_proof_arm64
 /test_arm64_jit
+/test_memory_ops
+/test_modulo
