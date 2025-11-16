@@ -5434,6 +5434,51 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 			break;
 
+		// =====================================================================
+		// Type Conversions and Safety
+		// =====================================================================
+
+		case OToInt:
+			// Convert to integer
+			// For now: only handle integer sign-extension (I32 -> I64)
+			// Float conversions require FP registers - not yet implemented
+			if (ra == dst) break;  // Same register, no conversion needed
+
+			if (dst->t->kind == HI64 && ra->t->kind == HI32) {
+				// Sign-extend 32-bit to 64-bit
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				// SXTW Xd, Wn - sign extend word to doubleword
+				unsigned int inst = (0x93407C00) | (arm_reg(rn) << 5) | arm_reg(rd);
+				B32(inst);
+			} else if (ra->t->kind == HF64 || ra->t->kind == HF32) {
+				// Float-to-int conversion requires FP registers
+				jit_error("OToInt: float conversion not yet implemented in ARM64");
+			} else {
+				// Other cases: just move
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				arm_mov_reg(ctx, rd, rn, true);
+			}
+			break;
+
+		case OSafeCast:
+			// Safe dynamic cast - requires runtime type checking
+			// For now: just move the value (unsafe, but allows programs to run)
+			// TODO: Implement proper runtime type checking
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				arm_mov_reg(ctx, rd, rn, true);
+			}
+			break;
+
+		case OToDyn:
+			// Convert to dynamic type - requires allocation
+			// This needs native function calls which aren't implemented yet
+			jit_error("OToDyn: dynamic allocation not yet implemented in ARM64");
+			break;
+
 		default:
 			jit_error(hl_op_name(o->op));
 			break;

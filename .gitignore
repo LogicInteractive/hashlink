@@ -63,3 +63,4 @@ args.txt
 /test_memory_ops
 /test_modulo
 /test_field_access
+/test_conversions
