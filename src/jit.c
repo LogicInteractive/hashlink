@@ -5023,6 +5023,100 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_ldp(ctx, X29, X30, (Arm64Reg)31, 16, true, false);  // ldp x29, x30, [sp], #16
 			arm_ret(ctx, X30);
 			break;
+
+		// =====================================================================
+		// Jump Operations
+		// =====================================================================
+
+		case OJAlways:
+			{
+				// Unconditional jump
+				int jump = arm_do_jump(ctx);
+				register_jump(ctx, jump, (opCount + 1) + o->p2);
+			}
+			break;
+
+		case OJTrue:
+		case OJFalse:
+			{
+				// Jump based on boolean/zero test
+				// dst contains the value to test
+				Arm64Reg rd = GET_REG(dst);
+				int jump;
+
+				if (o->op == OJTrue) {
+					// Jump if dst != 0 (true)
+					jump = arm_do_cbnz(ctx, rd, true);
+				} else {
+					// Jump if dst == 0 (false)
+					jump = arm_do_cbz(ctx, rd, true);
+				}
+
+				register_jump(ctx, jump, (opCount + 1) + o->p2);
+			}
+			break;
+
+		case OJNull:
+		case OJNotNull:
+			{
+				// Jump based on null test
+				// dst contains the pointer to test
+				Arm64Reg rd = GET_REG(dst);
+				int jump;
+
+				if (o->op == OJNull) {
+					// Jump if dst == NULL (0)
+					jump = arm_do_cbz(ctx, rd, true);
+				} else {
+					// Jump if dst != NULL
+					jump = arm_do_cbnz(ctx, rd, true);
+				}
+
+				register_jump(ctx, jump, (opCount + 1) + o->p2);
+			}
+			break;
+
+		// =====================================================================
+		// Comparison Jump Operations
+		// =====================================================================
+
+		case OJEq:
+		case OJNotEq:
+		case OJSLt:
+		case OJSGte:
+		case OJSLte:
+		case OJSGt:
+		case OJULt:
+		case OJUGte:
+			{
+				// Comparison jumps: compare dst and ra, then jump based on condition
+				// dst = first operand, ra = second operand
+				Arm64Reg rd = GET_REG(dst);
+				Arm64Reg rn = GET_REG(ra);
+				int jump;
+
+				// Perform comparison: CMP rd, rn (sets flags based on rd - rn)
+				arm_subs_reg(ctx, (Arm64Reg)31, rd, rn, true);  // SUBS XZR, rd, rn
+
+				// Emit conditional branch based on operation
+				Arm64Condition cond;
+				switch (o->op) {
+					case OJEq:    cond = ARM64_COND_EQ; break;  // Equal
+					case OJNotEq: cond = ARM64_COND_NE; break;  // Not Equal
+					case OJSLt:   cond = ARM64_COND_LT; break;  // Signed Less Than
+					case OJSGte:  cond = ARM64_COND_GE; break;  // Signed Greater or Equal
+					case OJSLte:  cond = ARM64_COND_LE; break;  // Signed Less or Equal
+					case OJSGt:   cond = ARM64_COND_GT; break;  // Signed Greater Than
+					case OJULt:   cond = ARM64_COND_LO; break;  // Unsigned Less Than
+					case OJUGte:  cond = ARM64_COND_HS; break;  // Unsigned Greater or Equal
+					default:      cond = ARM64_COND_AL; break;  // Always (shouldn't happen)
+				}
+
+				jump = arm_do_jump_cond(ctx, cond);
+				register_jump(ctx, jump, (opCount + 1) + o->p3);
+			}
+			break;
+
 		default:
 			jit_error(hl_op_name(o->op));
 			break;
@@ -5882,6 +5976,43 @@ static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
 		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
 	}
+}
+
+// =====================================================================
+// ARM64 Jump/Branch Helpers
+// =====================================================================
+
+// Helper: Perform unconditional jump and return position for patching
+static int arm_do_jump(jit_ctx *ctx) {
+	return arm_b(ctx, 0);  // Forward branch with offset=0 (to be patched)
+}
+
+// Helper: Perform conditional jump based on flags and return position for patching
+static int arm_do_jump_cond(jit_ctx *ctx, Arm64Condition cond) {
+	return arm_b_cond(ctx, cond, 0);  // Forward branch with offset=0 (to be patched)
+}
+
+// Helper: Perform CBZ (compare and branch if zero) and return position for patching
+static int arm_do_cbz(jit_ctx *ctx, Arm64Reg rt, bool is64) {
+	return arm_cbz(ctx, rt, 0, is64);  // Forward branch with offset=0 (to be patched)
+}
+
+// Helper: Perform CBNZ (compare and branch if non-zero) and return position for patching
+static int arm_do_cbnz(jit_ctx *ctx, Arm64Reg rt, bool is64) {
+	return arm_cbnz(ctx, rt, 0, is64);  // Forward branch with offset=0 (to be patched)
+}
+
+// Helper: Patch a jump to target current position
+static void arm_patch_jump(jit_ctx *ctx, int jump_pos) {
+	if (jump_pos == 0) return;
+	int target_pos = ARM_BUF_POS();
+	arm_patch_branch(ctx, jump_pos, target_pos);
+}
+
+// Helper: Patch a jump to a specific target position
+static void arm_patch_jump_to(jit_ctx *ctx, int jump_pos, int target_pos) {
+	if (jump_pos == 0) return;
+	arm_patch_branch(ctx, jump_pos, target_pos);
 }
 
 // =====================================================================

@@ -56,3 +56,7 @@ node_modules
 args.txt
 /other/benchs/hlc
 /test_arm64_encoder
+/test_arm64_branches
+/test_jump_operations
+/test_proof_arm64
+/test_arm64_jit
