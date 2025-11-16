@@ -297,6 +297,49 @@ typedef enum {
 	_ARM_OP_LAST
 } Arm64Op;
 
+// ARM64 Condition Codes
+typedef enum {
+	COND_EQ = 0x0,  // Equal (Z set)
+	COND_NE = 0x1,  // Not equal (Z clear)
+	COND_CS = 0x2,  // Carry set / unsigned higher or same
+	COND_CC = 0x3,  // Carry clear / unsigned lower
+	COND_MI = 0x4,  // Minus / negative
+	COND_PL = 0x5,  // Plus / positive or zero
+	COND_VS = 0x6,  // Overflow set
+	COND_VC = 0x7,  // Overflow clear
+	COND_HI = 0x8,  // Unsigned higher
+	COND_LS = 0x9,  // Unsigned lower or same
+	COND_GE = 0xA,  // Signed greater than or equal
+	COND_LT = 0xB,  // Signed less than
+	COND_GT = 0xC,  // Signed greater than
+	COND_LE = 0xD,  // Signed less than or equal
+	COND_AL = 0xE,  // Always (unconditional)
+	COND_NV = 0xF   // Never (reserved)
+} Arm64Condition;
+
+// ARM64 buffer writing macro (instructions are 32-bit)
+#define B32(val)	*ctx->buf.w++ = (unsigned int)(val)
+
+// ARM64 buffer position
+#define ARM_BUF_POS()	((int)((unsigned char*)ctx->buf.w - ctx->startBuf))
+
+// Helper to encode register field (checks for valid register range)
+static inline unsigned int arm_reg(int reg) {
+	return (unsigned int)(reg & 0x1F);  // 5 bits for register number
+}
+
+// Helper to check if immediate fits in N bits (signed)
+static inline bool arm_fits_signed(int64_t val, int bits) {
+	int64_t min = -(1LL << (bits - 1));
+	int64_t max = (1LL << (bits - 1)) - 1;
+	return val >= min && val <= max;
+}
+
+// Helper to check if immediate fits in N bits (unsigned)
+static inline bool arm_fits_unsigned(uint64_t val, int bits) {
+	return val < (1ULL << bits);
+}
+
 #endif // HL_JIT_ARM64
 
 // =====================================================================
@@ -4906,3 +4949,467 @@ void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **d
 }
 
 #endif // HL_JIT_X86
+
+// =====================================================================
+// ARM64/AArch64 JIT Implementation
+// =====================================================================
+#ifdef HL_JIT_ARM64
+
+// =====================================================================
+// ARM64 Instruction Encoders - Data Processing (Register)
+// =====================================================================
+
+// Add/Subtract (shifted register)
+// Format: sf 0 S 01011 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+static void arm_alu_reg(jit_ctx *ctx, unsigned int opc, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (opc << 29) | (0x0B << 24) |
+	                    (arm_reg(rm) << 16) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// ADD (register): rd = rn + rm
+static void arm_add_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	arm_alu_reg(ctx, 0, rd, rn, rm, is64);  // opc=0 for ADD
+}
+
+// SUB (register): rd = rn - rm
+static void arm_sub_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	arm_alu_reg(ctx, 2, rd, rn, rm, is64);  // opc=2 for SUB
+}
+
+// =====================================================================
+// ARM64 Instruction Encoders - Data Processing (Immediate)
+// =====================================================================
+
+// Add/Subtract (immediate)
+// Format: sf 0 S 100010 shift(2) imm12(12) Rn(5) Rd(5)
+static void arm_alu_imm(jit_ctx *ctx, unsigned int opc, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64) {
+	if (!arm_fits_unsigned(imm12, 12)) {
+		ASSERT(1); // Immediate out of range
+		return;
+	}
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (opc << 29) | (0x11 << 24) |
+	                    (imm12 << 10) | (arm_reg(rn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// ADD (immediate): rd = rn + imm12
+static void arm_add_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64) {
+	arm_alu_imm(ctx, 0, rd, rn, imm12, is64);
+}
+
+// SUB (immediate): rd = rn - imm12
+static void arm_sub_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64) {
+	arm_alu_imm(ctx, 2, rd, rn, imm12, is64);
+}
+
+// MOV (register): mov rd, rm
+// Implemented as: ORR rd, XZR, rm
+static void arm_mov_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64) {
+	unsigned int sf = is64 ? 1 : 0;
+	// ORR (shifted register): sf 01 01010 shift(2) 0 Rm(5) imm6(6) Rn(5) Rd(5)
+	unsigned int inst = (sf << 31) | (0x2A << 24) |
+	                    (arm_reg(rm) << 16) | (31 << 5) | arm_reg(rd);  // Rn = XZR (31)
+	B32(inst);
+}
+
+// MOVZ (move wide with zero): mov rd, #imm16 << (shift * 16)
+// Format: sf 10 100101 hw(2) imm16(16) Rd(5)
+static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64) {
+	if (!arm_fits_unsigned(imm16, 16) || shift > 3) {
+		ASSERT(2);
+		return;
+	}
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x52 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// MOVK (move wide with keep): movk rd, #imm16 << (shift * 16)
+// Format: sf 11 100101 hw(2) imm16(16) Rd(5)
+static void arm_movk(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64) {
+	if (!arm_fits_unsigned(imm16, 16) || shift > 3) {
+		ASSERT(3);
+		return;
+	}
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x72 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// Helper: Load a 64-bit immediate into a register (requires up to 4 instructions)
+static void arm_load_imm64(jit_ctx *ctx, Arm64Reg rd, uint64_t imm) {
+	// Check if it fits in 16 bits (single MOVZ)
+	if (arm_fits_unsigned(imm, 16)) {
+		arm_movz(ctx, rd, (unsigned int)imm, 0, true);
+		return;
+	}
+
+	// Use MOVZ + up to 3 MOVK instructions
+	bool first = true;
+	for (int shift = 0; shift < 4; shift++) {
+		unsigned int chunk = (unsigned int)((imm >> (shift * 16)) & 0xFFFF);
+		if (chunk != 0) {
+			if (first) {
+				arm_movz(ctx, rd, chunk, shift, true);
+				first = false;
+			} else {
+				arm_movk(ctx, rd, chunk, shift, true);
+			}
+		} else if (first) {
+			// First chunk is zero, emit MOVZ with 0
+			arm_movz(ctx, rd, 0, shift, true);
+			first = false;
+		}
+	}
+}
+
+// =====================================================================
+// ARM64 Instruction Encoders - Load/Store
+// =====================================================================
+
+// LDR (literal): Load register from PC-relative address
+// Format: opc(2) 011 0 00 imm19(19) Rt(5)
+static void arm_ldr_literal(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64) {
+	if (!arm_fits_signed(offset >> 2, 19)) {
+		ASSERT(4); // Offset out of range
+		return;
+	}
+	unsigned int opc = is64 ? 1 : 0;
+	unsigned int imm19 = (offset >> 2) & 0x7FFFF;
+	unsigned int inst = (opc << 30) | (0x18 << 24) | (imm19 << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// LDR (unsigned offset): Load register from [rn + (imm12 << size)]
+// Format: size(2) 111 0 01 imm12(12) Rn(5) Rt(5)
+static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
+	if (!arm_fits_unsigned(imm12, 12)) {
+		ASSERT(5);
+		return;
+	}
+	unsigned int inst = (size << 30) | (0x39 << 24) | (imm12 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// STR (unsigned offset): Store register to [rn + (imm12 << size)]
+// Format: size(2) 111 0 00 imm12(12) Rn(5) Rt(5)
+static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
+	if (!arm_fits_unsigned(imm12, 12)) {
+		ASSERT(6);
+		return;
+	}
+	unsigned int inst = (size << 30) | (0x39 << 24) | (0 << 22) | (imm12 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// LDP (load pair): Load two registers from [rn + (imm7 << size)]
+// Format: opc(2) 101 0 010 1 imm7(7) Rt2(5) Rn(5) Rt(5)
+static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int imm7, bool is64) {
+	if (!arm_fits_signed(imm7, 7)) {
+		ASSERT(7);
+		return;
+	}
+	unsigned int opc = is64 ? 2 : 0;
+	unsigned int inst = (opc << 30) | (0x29 << 25) | (1 << 23) |
+	                    ((imm7 & 0x7F) << 15) | (arm_reg(rt2) << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// STP (store pair): Store two registers to [rn + (imm7 << size)]
+// Format: opc(2) 101 0 010 0 imm7(7) Rt2(5) Rn(5) Rt(5)
+static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int imm7, bool is64) {
+	if (!arm_fits_signed(imm7, 7)) {
+		ASSERT(8);
+		return;
+	}
+	unsigned int opc = is64 ? 2 : 0;
+	unsigned int inst = (opc << 30) | (0x29 << 25) | (0 << 23) |
+	                    ((imm7 & 0x7F) << 15) | (arm_reg(rt2) << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// =====================================================================
+// ARM64 Instruction Encoders - Branch Instructions
+// =====================================================================
+
+// B (unconditional branch): Branch to PC + (offset << 2)
+// Format: 0 00101 imm26(26)
+static int arm_b(jit_ctx *ctx, int offset) {
+	// offset is in bytes, needs to be >> 2 for instruction encoding
+	int pos = ARM_BUF_POS();
+	if (offset == 0) {
+		// Forward branch - will be patched later
+		B32(0x14000000);  // B with 0 offset
+		return pos;
+	}
+	if (!arm_fits_signed(offset >> 2, 26)) {
+		ASSERT(9);
+		return pos;
+	}
+	unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
+	unsigned int inst = (0x05 << 26) | imm26;
+	B32(inst);
+	return pos;
+}
+
+// BL (branch with link): Call function at PC + (offset << 2)
+// Format: 1 00101 imm26(26)
+static int arm_bl(jit_ctx *ctx, int offset) {
+	int pos = ARM_BUF_POS();
+	if (offset == 0) {
+		B32(0x94000000);  // BL with 0 offset
+		return pos;
+	}
+	if (!arm_fits_signed(offset >> 2, 26)) {
+		ASSERT(10);
+		return pos;
+	}
+	unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
+	unsigned int inst = (0x25 << 26) | imm26;
+	B32(inst);
+	return pos;
+}
+
+// BR (branch to register): Branch to address in register
+// Format: 1101011 0000 11111 000000 Rn(5) 00000
+static void arm_br(jit_ctx *ctx, Arm64Reg rn) {
+	unsigned int inst = (0xD61F << 16) | (arm_reg(rn) << 5);
+	B32(inst);
+}
+
+// BLR (branch with link to register): Call function at address in register
+// Format: 1101011 0001 11111 000000 Rn(5) 00000
+static void arm_blr(jit_ctx *ctx, Arm64Reg rn) {
+	unsigned int inst = (0xD63F << 16) | (arm_reg(rn) << 5);
+	B32(inst);
+}
+
+// RET (return): Return to address in X30 (LR) or specified register
+// Format: 1101011 0010 11111 000000 Rn(5) 00000
+static void arm_ret(jit_ctx *ctx, Arm64Reg rn) {
+	unsigned int inst = (0xD65F << 16) | (arm_reg(rn) << 5);
+	B32(inst);
+}
+
+// B.cond (conditional branch): Branch to PC + (offset << 2) if condition true
+// Format: 01010100 imm19(19) 0 cond(4)
+static int arm_b_cond(jit_ctx *ctx, Arm64Condition cond, int offset) {
+	int pos = ARM_BUF_POS();
+	if (offset == 0) {
+		// Forward branch - will be patched later
+		B32(0x54000000 | cond);
+		return pos;
+	}
+	if (!arm_fits_signed(offset >> 2, 19)) {
+		ASSERT(11);
+		return pos;
+	}
+	unsigned int imm19 = (offset >> 2) & 0x7FFFF;
+	unsigned int inst = (0x54 << 24) | (imm19 << 5) | cond;
+	B32(inst);
+	return pos;
+}
+
+// CBZ (compare and branch if zero)
+// Format: sf 011010 0 imm19(19) Rt(5)
+static int arm_cbz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64) {
+	int pos = ARM_BUF_POS();
+	if (offset == 0) {
+		unsigned int sf = is64 ? 1 : 0;
+		B32((sf << 31) | (0x34 << 24) | arm_reg(rt));
+		return pos;
+	}
+	if (!arm_fits_signed(offset >> 2, 19)) {
+		ASSERT(12);
+		return pos;
+	}
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int imm19 = (offset >> 2) & 0x7FFFF;
+	unsigned int inst = (sf << 31) | (0x34 << 24) | (imm19 << 5) | arm_reg(rt);
+	B32(inst);
+	return pos;
+}
+
+// CBNZ (compare and branch if not zero)
+// Format: sf 011010 1 imm19(19) Rt(5)
+static int arm_cbnz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64) {
+	int pos = ARM_BUF_POS();
+	if (offset == 0) {
+		unsigned int sf = is64 ? 1 : 0;
+		B32((sf << 31) | (0x35 << 24) | arm_reg(rt));
+		return pos;
+	}
+	if (!arm_fits_signed(offset >> 2, 19)) {
+		ASSERT(13);
+		return pos;
+	}
+	unsigned int sf = is64 ? 1 : 0;
+	unsigned int imm19 = (offset >> 2) & 0x7FFFF;
+	unsigned int inst = (sf << 31) | (0x35 << 24) | (imm19 << 5) | arm_reg(rt);
+	B32(inst);
+	return pos;
+}
+
+// =====================================================================
+// ARM64 Branch Patching
+// =====================================================================
+
+static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
+	unsigned int *instr = (unsigned int*)(ctx->startBuf + jump_pos);
+	int offset = target_pos - jump_pos;
+
+	unsigned int opcode = (*instr >> 24) & 0xFF;
+
+	// Check instruction type and patch accordingly
+	if ((opcode & 0xFC) == 0x14) {
+		// B or BL (26-bit offset)
+		if (!arm_fits_signed(offset >> 2, 26)) {
+			ASSERT(14);
+			return;
+		}
+		unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
+		*instr = (*instr & 0xFC000000) | imm26;
+	} else if (opcode == 0x54) {
+		// B.cond (19-bit offset)
+		if (!arm_fits_signed(offset >> 2, 19)) {
+			ASSERT(15);
+			return;
+		}
+		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
+		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
+	} else if ((opcode & 0xFE) == 0x34) {
+		// CBZ/CBNZ (19-bit offset)
+		if (!arm_fits_signed(offset >> 2, 19)) {
+			ASSERT(16);
+			return;
+		}
+		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
+		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
+	}
+}
+
+// =====================================================================
+// ARM64 Function Prologue/Epilogue (AAPCS64 Calling Convention)
+// =====================================================================
+
+// Generate function prologue:
+// - Save FP (X29) and LR (X30) to stack
+// - Set up new frame pointer
+// - Allocate stack space for local variables
+//
+// Standard ARM64 prologue:
+//   stp    x29, x30, [sp, #-framesize]!   ; pre-index: sp -= framesize, store FP/LR
+//   mov    x29, sp                         ; set frame pointer
+//
+// Note: framesize must be 16-byte aligned per AAPCS64
+static void arm_prologue(jit_ctx *ctx, int framesize) {
+	// Ensure 16-byte stack alignment
+	if (framesize & 15) {
+		framesize = (framesize + 15) & ~15;
+	}
+
+	// STP with pre-index: stp x29, x30, [sp, #-framesize]!
+	// We use negative offset and pre-index mode
+	// For STP pre-index: opc(2) 101 0 011 0 imm7(7) Rt2(5) Rn(5) Rt(5)
+	int imm7 = -framesize >> 3;  // Offset in units of 8 bytes for 64-bit pair
+	if (!arm_fits_signed(imm7, 7)) {
+		// Frame too large for single STP, need to adjust SP first
+		// sub sp, sp, #framesize
+		if (framesize <= 4095) {
+			arm_sub_imm(ctx, XZR, XZR, framesize, true);  // XZR acts as SP in this context
+		} else {
+			// Large frame: use temporary register
+			arm_load_imm64(ctx, X9, framesize);
+			arm_sub_reg(ctx, XZR, XZR, X9, true);
+		}
+		// stp x29, x30, [sp]
+		arm_stp(ctx, X29, X30, XZR, 0, true);
+	} else {
+		// STP with pre-index (encoded differently than post-index)
+		unsigned int inst = (2 << 30) | (0x29 << 25) | (3 << 23) |  // pre-index mode
+		                    ((imm7 & 0x7F) << 15) | (30 << 10) |      // X30 (LR)
+		                    (31 << 5) | 29;                            // SP, X29 (FP)
+		B32(inst);
+	}
+
+	// mov x29, sp (set frame pointer)
+	arm_mov_reg(ctx, X29, XZR, true);  // XZR represents SP in move context
+}
+
+// Generate function epilogue:
+// - Restore FP (X29) and LR (X30) from stack
+// - Restore stack pointer
+// - Return to caller
+//
+// Standard ARM64 epilogue:
+//   ldp    x29, x30, [sp], #framesize    ; post-index: load FP/LR, sp += framesize
+//   ret                                   ; return to X30 (LR)
+static void arm_epilogue(jit_ctx *ctx, int framesize) {
+	// Ensure 16-byte stack alignment
+	if (framesize & 15) {
+		framesize = (framesize + 15) & ~15;
+	}
+
+	// LDP with post-index: ldp x29, x30, [sp], #framesize
+	int imm7 = framesize >> 3;  // Offset in units of 8 bytes
+	if (!arm_fits_signed(imm7, 7)) {
+		// Frame too large, restore in steps
+		arm_ldp(ctx, X29, X30, XZR, 0, true);  // ldp x29, x30, [sp]
+		// add sp, sp, #framesize
+		if (framesize <= 4095) {
+			arm_add_imm(ctx, XZR, XZR, framesize, true);
+		} else {
+			arm_load_imm64(ctx, X9, framesize);
+			arm_add_reg(ctx, XZR, XZR, X9, true);
+		}
+	} else {
+		// LDP with post-index
+		unsigned int inst = (2 << 30) | (0x28 << 25) | (1 << 23) |  // post-index mode
+		                    ((imm7 & 0x7F) << 15) | (30 << 10) |      // X30 (LR)
+		                    (31 << 5) | 29;                            // SP, X29 (FP)
+		B32(inst);
+	}
+
+	// ret (return to X30/LR)
+	arm_ret(ctx, X30);
+}
+
+// =====================================================================
+// ARM64 Calling Convention Helpers (AAPCS64)
+// =====================================================================
+
+// AAPCS64: First 8 integer/pointer arguments go in X0-X7
+// Returns the argument register for a given argument index, or -1 if on stack
+static int arm_arg_reg(int arg_index) {
+	if (arg_index < 8) {
+		return X0 + arg_index;
+	}
+	return -1;  // Argument is on stack
+}
+
+// AAPCS64: First 8 FP/SIMD arguments go in V0-V7
+static int arm_fp_arg_reg(int arg_index) {
+	if (arg_index < 8) {
+		return V0 + arg_index;
+	}
+	return -1;  // Argument is on stack
+}
+
+// Calculate stack offset for arguments beyond register arguments
+// Each stack argument takes 8 bytes (aligned)
+static int arm_arg_stack_offset(int arg_index) {
+	if (arg_index < 8) {
+		return -1;  // Not on stack
+	}
+	// Stack arguments start after the saved FP/LR (16 bytes from SP)
+	return 16 + ((arg_index - 8) * 8);
+}
+
+#endif // HL_JIT_ARM64
