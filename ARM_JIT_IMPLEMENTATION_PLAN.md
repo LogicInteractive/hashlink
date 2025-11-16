@@ -411,6 +411,219 @@ typedef enum {
 
 ---
 
+### 2.1a Literal Pool Management (CRITICAL - Opus Feedback)
+
+**Issue:** ARM64 cannot encode arbitrary 64-bit constants in a single instruction.
+
+**Solution:** Literal pools - emit constants in memory, load via PC-relative addressing.
+
+```c
+#ifdef HL_ARM64
+
+#define MAX_LITERALS 256
+#define LITERAL_POOL_INTERVAL 4000  // Emit pool every ~4KB
+
+typedef struct {
+    int_val values[MAX_LITERALS];
+    int count;
+    int last_pool_pos;
+} literal_pool;
+
+static literal_pool pool;
+
+// Add literal to pool, return index
+static int add_literal(jit_ctx *ctx, int_val value) {
+    // Check if already in pool
+    for (int i = 0; i < pool.count; i++) {
+        if (pool.values[i] == value)
+            return i;
+    }
+
+    // Add new literal
+    if (pool.count >= MAX_LITERALS) {
+        emit_literal_pool(ctx);
+    }
+
+    int idx = pool.count++;
+    pool.values[idx] = value;
+    return idx;
+}
+
+// Emit literal pool
+static void emit_literal_pool(jit_ctx *ctx) {
+    if (pool.count == 0) return;
+
+    // Align to 8 bytes
+    while (BUF_POS() & 7)
+        EMIT32(0xD503201F);  // NOP
+
+    // Emit all literals
+    for (int i = 0; i < pool.count; i++) {
+        W64(pool.values[i]);
+    }
+
+    pool.count = 0;
+    pool.last_pool_pos = BUF_POS();
+}
+
+// Check if we need to emit pool soon
+static void check_literal_pool(jit_ctx *ctx) {
+    if (BUF_POS() - pool.last_pool_pos > LITERAL_POOL_INTERVAL) {
+        // Jump over pool
+        int skip = arm64_b(ctx, 0);  // Placeholder
+        emit_literal_pool(ctx);
+        arm64_patch_branch(ctx, skip, BUF_POS());
+    }
+}
+
+// Load 64-bit constant via literal pool
+static void arm64_mov_imm64_pool(jit_ctx *ctx, Arm64Reg dst, int_val imm) {
+    int lit_idx = add_literal(ctx, imm);
+    int offset = (pool.last_pool_pos + lit_idx * 8) - BUF_POS();
+
+    // LDR Xd, [PC, #offset]
+    uint32_t insn = 0x58000000 | ((offset >> 2) << 5) | REG(dst);
+    EMIT32(insn);
+}
+
+#endif // HL_ARM64
+```
+
+**Deliverable:** Literal pool management system
+
+---
+
+### 2.1b Branch Veneers/Trampolines (CRITICAL - Opus Feedback)
+
+**Issue:** ARM64 branch range limits:
+- Conditional branch: ±1MB
+- Unconditional branch: ±128MB
+- Calls may exceed these ranges
+
+**Solution:** Generate trampolines (veneers) for far calls.
+
+```c
+#ifdef HL_ARM64
+
+#define MAX_VENEERS 128
+
+typedef struct {
+    void *target;
+    int veneer_pos;
+} veneer_entry;
+
+static veneer_entry veneers[MAX_VENEERS];
+static int veneer_count = 0;
+
+// Check if target is within branch range
+static bool in_branch_range(int current_pos, void *target) {
+    int_val offset = (int_val)target - (int_val)(ctx->startBuf + current_pos);
+    return offset >= -128*1024*1024 && offset < 128*1024*1024;
+}
+
+// Find or create veneer for far call
+static int get_veneer(jit_ctx *ctx, void *target) {
+    // Check if veneer already exists
+    for (int i = 0; i < veneer_count; i++) {
+        if (veneers[i].target == target)
+            return veneers[i].veneer_pos;
+    }
+
+    // Create new veneer
+    if (veneer_count >= MAX_VENEERS)
+        jit_error("Too many veneers");
+
+    int veneer_pos = BUF_POS();
+
+    // Emit veneer:
+    // LDR X16, [PC, #8]
+    // BR X16
+    // .quad target
+    EMIT32(0x58000050);  // LDR X16, [PC, #8]
+    EMIT32(0xD61F0200);  // BR X16
+    W64((int_val)target);
+
+    veneers[veneer_count].target = target;
+    veneers[veneer_count].veneer_pos = veneer_pos;
+    veneer_count++;
+
+    return veneer_pos;
+}
+
+// Call with automatic veneer generation
+static void arm64_call_far(jit_ctx *ctx, void *target) {
+    if (in_branch_range(BUF_POS(), target)) {
+        // Direct call
+        int offset = (int_val)target - (int_val)(ctx->startBuf + BUF_POS());
+        arm64_bl(ctx, offset);
+    } else {
+        // Use veneer
+        int veneer = get_veneer(ctx, target);
+        int offset = veneer - BUF_POS();
+        arm64_bl(ctx, offset);
+    }
+}
+
+#endif // HL_ARM64
+```
+
+**Deliverable:** Veneer generation for far calls
+
+---
+
+### 2.1c Memory Barriers (CRITICAL - Opus Feedback)
+
+**Issue:** ARM64 has a weak memory model. Need explicit barriers for:
+- Cross-thread visibility
+- Atomic operations
+- Memory ordering
+
+```c
+#ifdef HL_ARM64
+
+// DMB (Data Memory Barrier)
+static void arm64_dmb_ish(jit_ctx *ctx) {
+    // DMB ISH - Inner Shareable full barrier
+    EMIT32(0xD5033BBF);
+}
+
+static void arm64_dmb_ishst(jit_ctx *ctx) {
+    // DMB ISHST - Inner Shareable store barrier
+    EMIT32(0xD5033ABF);
+}
+
+// DSB (Data Synchronization Barrier)
+static void arm64_dsb_ish(jit_ctx *ctx) {
+    // DSB ISH - Inner Shareable synchronization barrier
+    EMIT32(0xD5033B9F);
+}
+
+// ISB (Instruction Synchronization Barrier)
+static void arm64_isb(jit_ctx *ctx) {
+    // ISB - Instruction barrier
+    EMIT32(0xD5033FDF);
+}
+
+// Atomic load/store helpers
+static void arm64_ldar(jit_ctx *ctx, Arm64Reg dst, Arm64Reg base) {
+    // LDAR Xd, [Xn] - Load-Acquire
+    uint32_t insn = 0xC8DFFC00 | (REG(base) << 5) | REG(dst);
+    EMIT32(insn);
+}
+
+static void arm64_stlr(jit_ctx *ctx, Arm64Reg src, Arm64Reg base) {
+    // STLR Xt, [Xn] - Store-Release
+    uint32_t insn = 0xC89FFC00 | (REG(base) << 5) | REG(src);
+    EMIT32(insn);
+}
+
+#endif // HL_ARM64
+```
+
+**Deliverable:** Memory barrier infrastructure
+
+---
+
 ### 2.2 MOV Instructions
 
 ARM64 has multiple MOV variants:
@@ -1772,3 +1985,153 @@ ChatGPT warned: "You get tests like add, loops, trace working. Then you hit weir
 - Expand opcode coverage
 
 **Ready to begin Phase 0?** We can start refactoring RIGHT NOW.
+
+---
+
+## ADDRESSING CLAUDE OPUS 4 FEEDBACK
+
+**Opus's Assessment:** "Plan shows good understanding but underestimates implementation complexity by ~2x."
+
+**Response:** ✅ **INCORPORATED**
+
+### Critical Technical Additions from Opus:
+
+**1. Literal Pool Management (Phase 2.1a - NEW)**
+- ARM64 can't encode arbitrary 64-bit immediates
+- Need literal pools emitted every ~4KB
+- PC-relative addressing for constants
+- **CRITICAL for correctness**
+
+**2. Branch Veneers/Trampolines (Phase 2.1b - NEW)**
+- Conditional branches: ±1MB range
+- Unconditional branches: ±128MB range
+- Automatic veneer generation for far calls
+- **CRITICAL for large codebases**
+
+**3. Memory Barriers (Phase 2.1c - NEW)**
+- ARM64 weak memory model requires explicit barriers
+- DMB/DSB/ISB instructions
+- Load-Acquire/Store-Release for atomics
+- **CRITICAL for multi-threading**
+
+**4. NEON/SIMD Mapping (Phase 5 - Enhanced)**
+- Map HashLink's SSE usage to ARM64 NEON
+- Different instruction set, similar concepts
+- Need careful mapping of operations
+
+**5. Debug Information (Phase 6 - Enhanced)**
+- DWARF generation for stack traces
+- Symbol table maintenance
+- Breakpoint handling
+
+### Timeline Update (More Realistic):
+
+**Opus's Assessment:** "11-15 weeks for production-ready implementation"
+
+**Updated Realistic Timeline:**
+- **Phase 0-2 (Foundation):** 2-3 weeks
+- **Phase 3-5 (Core Implementation):** 4-5 weeks
+- **Phase 6 (Integration):** 3-4 weeks
+- **Phase 7-8 (Testing/Polish):** 2-3 weeks
+- **Total: 11-15 weeks**
+
+**Why longer:**
+- Literal pools add complexity
+- Veneer generation edge cases
+- Memory barrier integration
+- GC interaction debugging
+- Exception handling complexity
+- "Last 10% takes 50% of time" reality
+
+### Opus's Recommendations (Incorporated):
+
+**1. Start with QEMU ARM64 Emulation**
+```bash
+# Can test without hardware initially
+sudo apt-get install qemu-user-static
+qemu-aarch64-static ./hl test.hl
+```
+
+**2. Consider Interpreter Fallback**
+- Implement partial JIT initially
+- Fall back to interpreter for complex opcodes
+- Reduces risk, allows incremental implementation
+
+**3. Study Existing ARM64 JITs**
+- LuaJIT ARM64 backend
+- JavaScriptCore ARM assembler
+- V8 ARM64 code generator
+
+**4. Focus Initial Implementation**
+- Get integer arithmetic working first
+- Defer FP/SIMD initially
+- Add complexity incrementally
+
+**5. Alternative Consideration**
+- Given complexity, could improve HashLink/C AOT path for ARM64
+- Simpler than JIT, still enables ARM64 support
+- But JIT is feasible with proper planning
+
+### Honest Re-Assessment:
+
+**Feasibility:** ✅ YES - absolutely doable with proper planning
+**Complexity:** ⚠️ VERY HIGH - underestimated by 2x initially
+**Timeline:** 📅 **11-15 weeks realistic** (not 5-8)
+**Risk:** 🎯 Manageable with:
+- Incremental approach
+- QEMU testing without hardware
+- Interpreter fallback for complex opcodes
+- Thorough study of existing ARM64 JITs
+
+**The Enhanced Plan Now Covers:**
+- ✅ 25% Instruction encoding + critical ARM64-specific issues
+- ✅ 45% Integration complexity (register allocator, GC, exceptions, NEON)
+- ✅ 20% Testing & debugging (QEMU + real hardware)
+- ✅ 10% Unexpected issues (buffered)
+
+---
+
+## DEVELOPMENT STRATEGY (Updated)
+
+### Phase 0-2: Work HERE (2-3 weeks)
+1. Set up QEMU ARM64 emulation
+2. Refactor jit.c to dual-backend
+3. Implement instruction encoders
+4. Add literal pool management
+5. Add veneer generation
+6. Add memory barriers
+7. Cross-compile and test with QEMU
+
+### Phase 3: Get ARM Hardware (Week 3)
+- Raspberry Pi 4/5 or AWS Graviton instance
+- Real instruction cache testing
+- Performance measurement
+
+### Phase 4-6: Integration (4-8 weeks)
+- Port opcodes incrementally
+- Start with integer ops
+- Add FP/NEON mapping
+- GC integration and testing
+- Exception handling
+
+### Phase 7: Polish (2-3 weeks)
+- Full test suite
+- Performance optimization
+- Edge case fixes
+- Production hardening
+
+---
+
+## IMMEDIATE NEXT STEPS
+
+**Ready to begin?** Here's what we'll do:
+
+1. **Phase 0.1:** Install QEMU ARM64 emulation
+2. **Phase 0.2:** Refactor jit.c to wrap x86 code
+3. **Phase 0.3:** Add ARM64 stubs
+4. **Phase 0.4:** Verify x86 still works
+5. **Phase 0.5:** Commit clean baseline
+
+**Then Phase 1-2:** Implement encoders, literal pools, veneers
+
+**Want to start Phase 0 now?** We can begin immediately! 🚀
