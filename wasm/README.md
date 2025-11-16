@@ -4,6 +4,8 @@ This directory contains a proof-of-concept for running HashLink HL-C compiled pr
 
 ## Prerequisites
 
+### Linux / macOS
+
 1. **Emscripten SDK**
    ```bash
    # Install Emscripten
@@ -30,36 +32,60 @@ This directory contains a proof-of-concept for running HashLink HL-C compiled pr
    cmake --version
    ```
 
+### Windows
+
+**See [WINDOWS.md](WINDOWS.md) for complete Windows setup guide.**
+
+Quick install:
+```cmd
+# Install Emscripten SDK
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+emsdk install latest
+emsdk activate latest
+emsdk_env.bat
+
+# Install via Chocolatey
+choco install haxe cmake python
+```
+
 ## Quick Start
 
-### 1. Build libhl for WASM
+### Linux / macOS
 
 ```bash
 # From hashlink root directory
-./wasm/build_wasm.sh
+./wasm/build_wasm.sh    # Build libhl for WASM
+./wasm/run_test.sh      # Run test
+# Open http://localhost:8080/test.html
 ```
 
-This will:
-- Create a `build-wasm` directory
-- Build libhl.a with Emscripten
-- Output to `build-wasm/bin/libhl.a`
+### Windows
 
-### 2. Run the test
-
-```bash
-cd wasm
-./run_test.sh
+```cmd
+REM From hashlink root directory
+wasm\build_wasm.bat     & REM Build libhl for WASM
+wasm\run_test.bat       & REM Run test
+REM Open http://localhost:8080/test.html
 ```
 
-This will:
-- Compile the Haxe test to C
-- Compile C to WASM
-- Generate test.html, test.js, test.wasm
-- Start a local HTTP server
-- Open browser to http://localhost:8080/test.html
+**See [WINDOWS.md](WINDOWS.md) for detailed Windows instructions.**
 
-### 3. View results
+### What These Do
 
+**Build script:**
+- Creates a `build-wasm` directory
+- Builds libhl.a with Emscripten
+- Outputs to `build-wasm/bin/libhl.a`
+
+**Test script:**
+- Compiles the Haxe test to C
+- Compiles C to WASM
+- Generates test.html, test.js, test.wasm
+- Starts a local HTTP server
+- Opens browser to http://localhost:8080/test.html
+
+**View results:**
 Open your browser's console to see the output from the HashLink program.
 
 ## Manual Build Steps

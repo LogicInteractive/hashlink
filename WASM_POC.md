@@ -148,6 +148,7 @@ brew install haxe
 
 ### Method 1: Automated (Recommended)
 
+**Linux / macOS:**
 ```bash
 cd /path/to/hashlink
 
@@ -159,6 +160,21 @@ cd /path/to/hashlink
 
 # Open http://localhost:8080/test.html in browser
 ```
+
+**Windows:**
+```cmd
+cd C:\path\to\hashlink
+
+REM Build libhl for WASM
+wasm\build_wasm.bat
+
+REM Run test
+wasm\run_test.bat
+
+REM Open http://localhost:8080/test.html in browser
+```
+
+**See `wasm/WINDOWS.md` for complete Windows setup guide.**
 
 ### Method 2: Manual
 
