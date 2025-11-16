@@ -64,3 +64,5 @@ args.txt
 /test_modulo
 /test_field_access
 /test_conversions
+/test_exceptions
+/test_conversions
