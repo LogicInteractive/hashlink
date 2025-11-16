@@ -56,6 +56,46 @@ In short you'll probably need:
 - [SDL2-devel](https://github.com/libsdl-org/SDL/releases/download/release-2.30.12/SDL2-devel-2.30.12-VC.zip), extract to `<hashlink>/include/sdl`
 - [openal-soft](https://github.com/kcat/openal-soft/releases/download/1.23.1/openal-soft-1.23.1-bin.zip), extract to `<hashlink>/include/openal`
 
+## Building for WebAssembly
+
+HashLink supports compilation to WebAssembly via Emscripten. This allows running Haxe applications in web browsers.
+
+**Prerequisites:**
+- [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html)
+- [Haxe](https://haxe.org/download/)
+
+**Build libhl for WASM:**
+
+```bash
+# Install and activate Emscripten
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest
+./emsdk activate latest
+source ./emsdk_env.sh
+
+# Build HashLink WASM runtime
+cd /path/to/hashlink
+./wasm/build_wasm.sh
+```
+
+This creates `build-wasm/bin/libhl.a` (~540 KB) containing the core runtime with PCRE2 regex support.
+
+**Compile Haxe programs to WASM:**
+
+```bash
+# Compile Haxe to HL-C
+haxe -hl hello.c -main HelloWorld
+
+# Compile to WASM
+emcc hello.c -o hello.html \
+  --shell-file wasm/minimal_template.html \
+  -I. -Isrc -Lbuild-wasm/bin -lhl \
+  -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -Oz
+```
+
+**See [WASM.md](WASM.md) for complete documentation.**
+
 ## Debugging
 
 You can debug Haxe/HashLink applications by using the [Visual Studio Code Debugger](https://marketplace.visualstudio.com/items?itemName=HaxeFoundation.haxe-hl)

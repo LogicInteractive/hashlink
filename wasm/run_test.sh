@@ -57,25 +57,21 @@ echo ""
 # Step 2: Compile C to WASM
 echo "Step 2: Compiling C to WASM..."
 echo "  Optimization: -Oz (size)"
-echo "  Closure: enabled"
 echo "  Memory: growth allowed"
+echo "  Template: minimal_template.html"
 echo ""
 
 emcc test.c -o test.html \
+    --shell-file minimal_template.html \
+    -I. \
     -I"$PROJECT_ROOT/src" \
-    -I"$PROJECT_ROOT/include/pcre" \
     -L"$BUILD_DIR/bin" \
     -lhl \
     -s WASM=1 \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
     -s EXPORTED_FUNCTIONS='["_main"]' \
-    -s TOTAL_STACK=5242880 \
-    -s TOTAL_MEMORY=16777216 \
-    --shell-file test_template.html \
-    -Oz \
-    --closure 1 \
-    2>&1 | grep -v "warning:" || true
+    -Oz
 
 if [ ! -f "test.wasm" ]; then
     echo "ERROR: WASM compilation failed!"
