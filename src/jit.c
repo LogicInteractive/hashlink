@@ -5991,9 +5991,58 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OEnumIndex:
 	case OEnumField:
 	case OMakeEnum:
-	case OSetEnumField:
 		// Enum operations require enum runtime support
 		jit_error("Enum operations not yet implemented in ARM64");
+		break;
+
+	case OSetEnumField:
+		{
+			// Set field in enum value: enum.field = value
+			if (dst && rb) {
+				hl_enum_construct *c = &dst->t->tenum->constructs[0];
+				int offset = c->offsets[o->p2];
+				int size = hl_type_size(c->params[o->p2]);
+
+				Arm64Reg r_enum = GET_REG(dst);
+				Arm64Reg r_value = GET_REG(rb);
+
+				// Store value at offset in enum
+				// STR/STRB/STRH depending on size
+				if (size == 8) {
+					// 64-bit store
+					if (offset < 4096 * 8) {
+						arm_str_imm(ctx, r_value, r_enum, offset / 8, 3);
+					} else {
+						arm_load_imm64(ctx, X9, offset);
+						arm_str_reg(ctx, r_value, r_enum, X9, 3);
+					}
+				} else if (size == 4) {
+					// 32-bit store
+					if (offset < 4096 * 4) {
+						arm_str_imm(ctx, r_value, r_enum, offset / 4, 2);
+					} else {
+						arm_load_imm64(ctx, X9, offset);
+						arm_str_reg(ctx, r_value, r_enum, X9, 2);
+					}
+				} else if (size == 2) {
+					// 16-bit store
+					if (offset < 4096 * 2) {
+						arm_str_imm(ctx, r_value, r_enum, offset / 2, 1);
+					} else {
+						arm_load_imm64(ctx, X9, offset);
+						arm_str_reg(ctx, r_value, r_enum, X9, 1);
+					}
+				} else {
+					// 8-bit store
+					if (offset < 4096) {
+						arm_str_imm(ctx, r_value, r_enum, offset, 0);
+					} else {
+						arm_load_imm64(ctx, X9, offset);
+						arm_str_reg(ctx, r_value, r_enum, X9, 0);
+					}
+				}
+			}
+		}
 		break;
 
 	// =====================================================================
@@ -6036,9 +6085,71 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case ODynGet:
-	case ODynSet:
 		// Dynamic field access requires runtime lookup
 		jit_error("Dynamic operations not yet implemented in ARM64");
+		break;
+
+	case ODynSet:
+		{
+			// Set dynamic field: obj.field = value
+			// Calls different functions based on value type
+			if (dst && rb) {
+				// Get field name hash
+				uint64_t hash = hl_hash_gen(hl_get_ustring(m->code, o->p2), true);
+				void *set_func = NULL;
+
+				// Determine which setter to call based on value type
+				switch (rb->t->kind) {
+				case HF32:
+					set_func = hl_dyn_setf;
+					break;
+				case HF64:
+					set_func = hl_dyn_setd;
+					break;
+				case HI64:
+				case HGUID:
+					set_func = hl_dyn_seti64;
+					break;
+				case HI32:
+				case HUI16:
+				case HUI8:
+				case HI8:
+				case HI16:
+				case HBOOL:
+					set_func = hl_dyn_seti;
+					break;
+				default:
+					// Pointer types
+					set_func = hl_dyn_setp;
+					break;
+				}
+
+				if (set_func) {
+					// Arguments: value (X0), hash (X1), object (X2)
+					Arm64Reg r_value = GET_REG(rb);
+					Arm64Reg r_obj = GET_REG(dst);
+
+					// Move value to X0
+					if (r_value != X0) {
+						arm_mov_reg(ctx, X0, r_value, true);
+					}
+
+					// Load hash into X1
+					arm_load_imm64(ctx, X1, hash);
+
+					// Move object to X2
+					if (r_obj != X2) {
+						arm_mov_reg(ctx, X2, r_obj, true);
+					}
+
+					// Load function pointer into X9
+					arm_load_imm64(ctx, X9, (uint64_t)set_func);
+
+					// BLR X9
+					B32(0xd63f0120);
+				}
+			}
+		}
 		break;
 
 	// =====================================================================
