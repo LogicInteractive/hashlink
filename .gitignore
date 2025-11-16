@@ -60,8 +60,10 @@ args.txt
 /wasm/*.wasm
 /wasm/*.js
 /wasm/*.c
+/wasm/*.html
 /wasm/_std/
 /wasm/hl/
 /wasm/haxe/
+/wasm/sys/
 /wasm/_*/
 /wasm/hlc.json
