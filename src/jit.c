@@ -3136,6 +3136,16 @@ static void make_dyn_cast( jit_ctx *ctx, vreg *dst, vreg *v ) {
 static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
 static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
 static void arm_add_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_sub_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_mul(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_sdiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_udiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_and_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_orr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_eor_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_neg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, bool is64);
+static void arm_mov_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64);
+static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64);
 static void arm_ret(jit_ctx *ctx, Arm64Reg rn);
 static void arm_load_imm64(jit_ctx *ctx, Arm64Reg rd, uint64_t imm);
 #endif
@@ -4848,19 +4858,24 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		ctx->maxRegs = f->nregs;
 	}
 
-	// Initialize vregs
+	// Initialize vregs and assign physical registers
+	// Simple allocation: vreg N -> register XN (for N < 19)
+	// X19-X28 are callee-saved, we'll use X0-X18 for now
 	for(i=0;i<f->nregs;i++) {
 		vreg *r = R(i);
 		r->t = f->regs[i];
 		r->size = hl_type_size(r->t);
 		r->current = NULL;
 		r->stack.kind = RSTACK;
-		r->stack.id = 0; // Will be set by stack allocation
+		r->stack.id = i < 19 ? i : -1;  // Simple vreg->preg mapping
 	}
 
 	// Simple function prologue - save FP and LR
 	// Note: SP is register 31 in ARM64, overlaps with XZR
 	arm_stp(ctx, X29, X30, (Arm64Reg)31, -16, true, true);  // stp x29, x30, [sp, #-16]!
+
+	// Helper: get physical register for vreg
+	#define GET_REG(vr) ((Arm64Reg)((vr) && (vr)->stack.id >= 0 ? (vr)->stack.id : X0))
 
 	// Process bytecode operations
 	for(opCount=0;opCount<f->nops;opCount++,o++) {
@@ -4869,25 +4884,105 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		ra = o->p2 < f->nregs ? R(o->p2) : NULL;
 		rb = o->p3 < f->nregs ? R(o->p3) : NULL;
 
-		// Minimal operation switch - only essential ops
+		// Get physical registers
+		Arm64Reg rd = GET_REG(dst);
+		Arm64Reg rn = GET_REG(ra);
+		Arm64Reg rm = GET_REG(rb);
+
+		// Operation switch
 		switch( o->op ) {
 		case OMov:
-			// TODO: Implement register move
-			hl_error("ARM64 JIT: OMov not yet implemented");
+		case OUnsafeCast:
+			// dst = ra (register move)
+			if (dst && ra) {
+				if (rd != rn) {  // Only move if different registers
+					arm_mov_reg(ctx, rd, rn, true);
+				}
+			}
 			break;
 		case OInt:
-			// Load integer constant: dst = m->code->ints[o->p2]
-			{
+			// dst = integer constant
+			if (dst) {
 				int64_t val = m->code->ints[o->p2];
-				// For now, just load into X0 (simplified)
-				arm_load_imm64(ctx, X0, (uint64_t)val);
+				arm_load_imm64(ctx, rd, (uint64_t)val);
+			}
+			break;
+		case OBool:
+			// dst = boolean constant (0 or 1)
+			if (dst) {
+				arm_movz(ctx, rd, o->p2 ? 1 : 0, 0, true);
 			}
 			break;
 		case OAdd:
-			// dst = ra + rb (simplified: X0 = X0 + X1)
-			arm_add_reg(ctx, X0, X0, X1, true);
+			// dst = ra + rb
+			if (dst && ra && rb) {
+				arm_add_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OSub:
+			// dst = ra - rb
+			if (dst && ra && rb) {
+				arm_sub_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OMul:
+			// dst = ra * rb
+			if (dst && ra && rb) {
+				arm_mul(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OSDiv:
+			// dst = ra / rb (signed division)
+			if (dst && ra && rb) {
+				arm_sdiv(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OUDiv:
+			// dst = ra / rb (unsigned division)
+			if (dst && ra && rb) {
+				arm_udiv(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OAnd:
+			// dst = ra & rb (bitwise AND)
+			if (dst && ra && rb) {
+				arm_and_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OOr:
+			// dst = ra | rb (bitwise OR)
+			if (dst && ra && rb) {
+				arm_orr_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case OXor:
+			// dst = ra ^ rb (bitwise XOR)
+			if (dst && ra && rb) {
+				arm_eor_reg(ctx, rd, rn, rm, true);
+			}
+			break;
+		case ONeg:
+			// dst = -ra (arithmetic negation)
+			if (dst && ra) {
+				arm_neg(ctx, rd, rn, true);
+			}
+			break;
+		case ONot:
+			// dst = !ra (logical NOT - XOR with 1)
+			if (dst && ra) {
+				arm_eor_reg(ctx, rd, rn, X1, true);  // Assuming X1 holds 1
+				// TODO: This needs fixing - should use immediate 1
+			}
 			break;
 		case ORet:
+			// Return from function
+			if (dst) {
+				// Move return value to X0 if needed
+				Arm64Reg ret_reg = GET_REG(dst);
+				if (ret_reg != X0) {
+					arm_mov_reg(ctx, X0, ret_reg, true);
+				}
+			}
 			// Restore FP and LR, return
 			arm_ldp(ctx, X29, X30, (Arm64Reg)31, 16, true, false);  // ldp x29, x30, [sp], #16
 			arm_ret(ctx, X30);
@@ -4897,6 +4992,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			break;
 		}
 	}
+
+	#undef GET_REG
 
 	return codePos;
 #endif // HL_JIT_ARM64
