@@ -26,13 +26,28 @@
 #include <hlmodule.h>
 #include "hlsystem.h"
 
-#ifdef __arm__
-#	error "JIT does not support ARM processors, only x86 and x86-64 are supported, please use HashLink/C native compilation instead"
+// =====================================================================
+// Architecture Detection
+// =====================================================================
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#   define HL_JIT_X86
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#   define HL_JIT_ARM64
+#elif defined(__arm__) || defined(_M_ARM)
+#   define HL_JIT_ARM32
+#   error "JIT: ARM32 not yet implemented, please use ARM64 (AArch64) or x86-64"
+#else
+#   error "JIT: Unsupported processor architecture (only x86/x86-64 and ARM64 supported)"
 #endif
 
 #ifdef HL_DEBUG
 #	define JIT_DEBUG
 #endif
+
+// =====================================================================
+// x86/x86-64 Backend
+// =====================================================================
+#ifdef HL_JIT_X86
 
 typedef enum {
 	Eax = 0,
@@ -184,6 +199,110 @@ static const int SIB_MULT[] = {-1, 0, 1, -1, 2, -1, -1, -1, 3};
 #	define IS_WINCALL64 0
 #endif
 
+#endif // HL_JIT_X86
+
+// =====================================================================
+// ARM64/AArch64 Backend
+// =====================================================================
+#ifdef HL_JIT_ARM64
+
+// ARM64 General Purpose Registers (64-bit: X0-X30, 32-bit: W0-W30)
+typedef enum {
+	X0 = 0,   // Argument/result register 1, temporary
+	X1 = 1,   // Argument/result register 2, temporary
+	X2 = 2,   // Argument register 3, temporary
+	X3 = 3,   // Argument register 4, temporary
+	X4 = 4,   // Argument register 5, temporary
+	X5 = 5,   // Argument register 6, temporary
+	X6 = 6,   // Argument register 7, temporary
+	X7 = 7,   // Argument register 8, temporary
+	X8 = 8,   // Indirect result location, temporary
+	X9 = 9,   // Temporary register
+	X10 = 10, // Temporary register
+	X11 = 11, // Temporary register
+	X12 = 12, // Temporary register
+	X13 = 13, // Temporary register
+	X14 = 14, // Temporary register
+	X15 = 15, // Temporary register
+	X16 = 16, // IP0 - Intra-procedure-call temporary
+	X17 = 17, // IP1 - Intra-procedure-call temporary
+	X18 = 18, // Platform register (reserved on some platforms)
+	X19 = 19, // Callee-saved register
+	X20 = 20, // Callee-saved register
+	X21 = 21, // Callee-saved register
+	X22 = 22, // Callee-saved register
+	X23 = 23, // Callee-saved register
+	X24 = 24, // Callee-saved register
+	X25 = 25, // Callee-saved register
+	X26 = 26, // Callee-saved register
+	X27 = 27, // Callee-saved register
+	X28 = 28, // Callee-saved register
+	X29 = 29, // FP - Frame pointer
+	X30 = 30, // LR - Link register
+	XZR = 31, // Zero register / SP depending on context
+	_ARM_LAST = 0xFF
+} Arm64Reg;
+
+// ARM64 SIMD/FP Registers (128-bit: V0-V31, 64-bit: D0-D31, 32-bit: S0-S31)
+// We'll primarily use V registers for consistency
+typedef enum {
+	V0 = 0,   // Argument/result register 1, temporary
+	V1 = 1,   // Argument/result register 2, temporary
+	V2 = 2,   // Argument/result register 3, temporary
+	V3 = 3,   // Argument/result register 4, temporary
+	V4 = 4,   // Argument/result register 5, temporary
+	V5 = 5,   // Argument/result register 6, temporary
+	V6 = 6,   // Argument/result register 7, temporary
+	V7 = 7,   // Argument/result register 8, temporary
+	V8 = 8,   // Callee-saved (low 64 bits only)
+	V9 = 9,   // Callee-saved (low 64 bits only)
+	V10 = 10, // Callee-saved (low 64 bits only)
+	V11 = 11, // Callee-saved (low 64 bits only)
+	V12 = 12, // Callee-saved (low 64 bits only)
+	V13 = 13, // Callee-saved (low 64 bits only)
+	V14 = 14, // Callee-saved (low 64 bits only)
+	V15 = 15, // Callee-saved (low 64 bits only)
+	V16 = 16, // Temporary register
+	V17 = 17, // Temporary register
+	V18 = 18, // Temporary register
+	V19 = 19, // Temporary register
+	V20 = 20, // Temporary register
+	V21 = 21, // Temporary register
+	V22 = 22, // Temporary register
+	V23 = 23, // Temporary register
+	V24 = 24, // Temporary register
+	V25 = 25, // Temporary register
+	V26 = 26, // Temporary register
+	V27 = 27, // Temporary register
+	V28 = 28, // Temporary register
+	V29 = 29, // Temporary register
+	V30 = 30, // Temporary register
+	V31 = 31, // Temporary register
+	_ARM_FP_LAST = 0xFF
+} Arm64FpReg;
+
+// ARM64 Instruction Opcodes (stub - will be expanded in Phase 2)
+typedef enum {
+	ARM_MOV,
+	ARM_ADD,
+	ARM_SUB,
+	ARM_MUL,
+	ARM_DIV,
+	ARM_LDR,
+	ARM_STR,
+	ARM_B,
+	ARM_BL,
+	ARM_RET,
+	// ... many more to be added in Phase 2
+	_ARM_OP_LAST
+} Arm64Op;
+
+#endif // HL_JIT_ARM64
+
+// =====================================================================
+// Architecture-Independent Structures
+// =====================================================================
+
 typedef struct jlist jlist;
 struct jlist {
 	int pos;
@@ -222,6 +341,11 @@ struct vreg {
 
 #define REG_AT(i)		(ctx->pregs + (i))
 
+// =====================================================================
+// x86/x86-64 Register Configuration
+// =====================================================================
+#ifdef HL_JIT_X86
+
 #ifdef HL_64
 #	define RCPU_COUNT	16
 #	define RFPU_COUNT	16
@@ -256,6 +380,57 @@ static const int RCPU_SCRATCH_REGS[] = { Eax, Ecx, Edx };
 #define PEBP			REG_AT(Ebp)
 
 #define REG_COUNT	(RCPU_COUNT + RFPU_COUNT)
+
+#endif // HL_JIT_X86
+
+// =====================================================================
+// ARM64/AArch64 Register Configuration
+// =====================================================================
+#ifdef HL_JIT_ARM64
+
+// ARM64 has 31 general purpose registers (X0-X30) + zero/SP
+// and 32 SIMD/FP registers (V0-V31)
+#define RCPU_COUNT	31
+#define RFPU_COUNT	32
+
+// AAPCS64 calling convention:
+// - X0-X7: Argument/result registers
+// - X8: Indirect result location (for large struct returns)
+// - X9-X15: Temporary registers (caller-saved)
+// - X16-X17: Intra-procedure-call temporary registers (IP0, IP1)
+// - X18: Platform register (may be reserved on some platforms)
+// - X19-X28: Callee-saved registers
+// - X29: Frame pointer (FP)
+// - X30: Link register (LR)
+// - XZR/SP: Zero register or stack pointer (depending on context)
+
+#define CALL_NREGS			8 // X0-X7 for arguments
+#define RCPU_SCRATCH_COUNT	10 // X0-X8, X9-X15 (excluding X16-X17 which are special)
+#define RFPU_SCRATCH_COUNT	32 // All V registers are caller-saved in AAPCS64
+
+// Scratch (caller-saved) GP registers: X0-X15
+static const int RCPU_SCRATCH_REGS[] = {
+	X0, X1, X2, X3, X4, X5, X6, X7,
+	X9, X10, X11, X12, X13, X14, X15
+};
+
+// Argument registers: X0-X7
+static const Arm64Reg CALL_REGS[] = {
+	X0, X1, X2, X3, X4, X5, X6, X7
+};
+
+#define VREG(i)			((i) + RCPU_COUNT)
+#define PVREG(i)		REG_AT(VREG(i))
+#define REG_IS_FP(i)	((i) >= RCPU_COUNT)
+
+// Common register aliases for ARM64
+#define PX0			REG_AT(X0)
+#define PX29		REG_AT(X29)  // Frame pointer
+#define PX30		REG_AT(X30)  // Link register
+
+#define REG_COUNT	(RCPU_COUNT + RFPU_COUNT)
+
+#endif // HL_JIT_ARM64
 
 #define ID2(a,b)	((a) | ((b)<<8))
 #define R(id)		(ctx->vregs + (id))
@@ -327,6 +502,11 @@ void error_i64() {
 
 static void _jit_error( jit_ctx *ctx, const char *msg, int line );
 static void on_jit_error( const char *msg, int_val line );
+
+// =====================================================================
+// x86/x86-64 JIT Implementation
+// =====================================================================
+#ifdef HL_JIT_X86
 
 static preg *pmem( preg *r, CpuReg reg, int offset ) {
 	r->kind = RMEM;
@@ -2266,6 +2446,12 @@ static void op_jump( jit_ctx *ctx, vreg *a, vreg *b, hl_opcode *op, int targetPo
 	register_jump(ctx,do_jump(ctx,op->op, IS_FLOAT(a)),targetPos);
 }
 
+#endif // HL_JIT_X86
+
+// =====================================================================
+// Main JIT API Functions
+// =====================================================================
+
 jit_ctx *hl_jit_alloc() {
 	int i;
 	jit_ctx *ctx = (jit_ctx*)malloc(sizeof(jit_ctx));
@@ -2273,6 +2459,7 @@ jit_ctx *hl_jit_alloc() {
 	memset(ctx,0,sizeof(jit_ctx));
 	hl_alloc_init(&ctx->falloc);
 	hl_alloc_init(&ctx->galloc);
+#ifdef HL_JIT_X86
 	for(i=0;i<RCPU_COUNT;i++) {
 		preg *r = REG_AT(i);
 		r->id = i;
@@ -2283,6 +2470,22 @@ jit_ctx *hl_jit_alloc() {
 		r->id = i;
 		r->kind = RFPU;
 	}
+#elif defined(HL_JIT_ARM64)
+	// ARM64: Initialize general purpose registers (X0-X30)
+	for(i=0;i<RCPU_COUNT;i++) {
+		preg *r = REG_AT(i);
+		r->id = i;
+		r->kind = RCPU;
+	}
+	// ARM64: Initialize SIMD/FP registers (V0-V31)
+	for(i=0;i<RFPU_COUNT;i++) {
+		preg *r = REG_AT(VREG(i));
+		r->id = i;
+		r->kind = RFPU;
+	}
+#else
+	#error "Unsupported architecture for JIT"
+#endif
 	return ctx;
 }
 
@@ -2880,6 +3083,10 @@ static void make_dyn_cast( jit_ctx *ctx, vreg *dst, vreg *v ) {
 }
 
 int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
+#ifndef HL_JIT_X86
+	hl_error("JIT compilation only supported on x86/x86-64 (ARM64 implementation in progress)");
+	return -1;
+#else
 	int i, size = 0, opCount;
 	int codePos = BUF_POS();
 	int nargs = f->type->fun->nargs;
@@ -4559,7 +4766,13 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// reset tmp allocator
 	hl_free(&ctx->falloc);
 	return codePos;
+#endif // HL_JIT_X86
 }
+
+// =====================================================================
+// x86/x86-64 Helper Functions
+// =====================================================================
+#ifdef HL_JIT_X86
 
 static void *get_wrapper( hl_type *t ) {
 	return call_jit_hl2c;
@@ -4597,6 +4810,10 @@ static void missing_closure() {
 }
 
 void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous ) {
+#ifndef HL_JIT_X86
+	hl_error("JIT code generation only supported on x86/x86-64 (ARM64 implementation in progress)");
+	return NULL;
+#else
 	jlist *c;
 	int size = BUF_POS();
 	unsigned char *code;
@@ -4685,5 +4902,7 @@ void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **d
 		}
 	}
 	return code;
+#endif // HL_JIT_X86
 }
 
+#endif // HL_JIT_X86
