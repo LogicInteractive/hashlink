@@ -169,6 +169,7 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND std_srcs
         src/std/event_loop_wasm.c
+        src/std/mainloop_wasm.c
     )
 endif()
 

@@ -143,29 +143,36 @@ static function httpGet(url:String):Promise<String>;
 
 ---
 
-### 7. No Event Loop ❌
+### 7. Event Loop ✅ SOLVED
 
-**Issue:** HashLink's event loop (libuv) not available
+**Status:** FULLY WORKING with standard haxe.Timer and haxe.MainLoop
 
-**Reason:** libuv.hdll not built for WASM
+**Solution:** Integrated Emscripten event loop with haxe.MainLoop
 
-**Impact:**
-- `haxe.Timer` callbacks - May not work
-- Async callbacks - Limited
-- Event-driven code - Needs adaptation
+**What Works:**
+- ✅ `haxe.Timer` - Fully functional (repeating timers)
+- ✅ `haxe.Timer.delay()` - One-shot timers
+- ✅ `haxe.MainLoop.add()` - Manual event scheduling
+- ✅ Standard Haxe APIs - No custom code needed
 
-**Workaround:**
-- Use browser's event loop (setTimeout, setInterval)
-- Use requestAnimationFrame for game loops
-- Implement JS interop for callbacks
-
-**Status:** Needs browser API integration
+**Implementation:**
+- `src/std/mainloop_wasm.c` - Bridges Emscripten ↔ haxe.MainLoop
+- `src/hlc_main.c` - Auto-starts event loop after main()
+- Uses `emscripten_set_main_loop()` at 60 FPS
+- Calls `haxe.MainLoop.tick()` to process events
 
 **Example:**
 ```haxe
-@:hlNative("js", "setTimeout")
-static function setTimeout(callback:Void->Void, ms:Int):Int;
+// Standard Haxe code - works in WASM!
+var timer = new haxe.Timer(1000);
+timer.run = function() {
+    trace("Tick!");
+};
+
+haxe.Timer.delay(() -> trace("Hello"), 2000);
 ```
+
+**See:** `wasm/STANDARD_LIBRARY_INTEGRATION.md` for details
 
 ---
 
@@ -435,7 +442,7 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable tests for WASM" FORCE)
 | Sys.sleep() | ⚠️ Blocks UI | Asyncify or setTimeout | Medium |
 | Native sockets | ❌ No | WebSocket | High |
 | HTTP client (uv) | ❌ No | fetch() API | High |
-| Event loop | ❌ No | Browser event loop | High |
+| Event loop | ✅ Works | N/A | N/A |
 | File I/O | ❌ No | MEMFS/IDBFS | Medium |
 | Process spawning | ❌ No | None | Expected |
 | SDL (graphics) | ❌ No | Canvas API | Medium |
@@ -448,9 +455,9 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable tests for WASM" FORCE)
 For a production-ready WASM implementation, consider adding:
 
 1. **High Priority:**
+   - ✅ ~~Timer/setTimeout integration~~ **DONE** (standard haxe.Timer works!)
    - WebSocket wrapper for networking
    - Browser fetch() wrapper for HTTP
-   - Timer/setTimeout integration
 
 2. **Medium Priority:**
    - Emscripten MEMFS for file operations

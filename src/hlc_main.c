@@ -25,6 +25,11 @@
 #   include <SDL_main.h>
 #endif
 
+#ifdef HL_EMSCRIPTEN
+extern void hl_mainloop_start();
+extern bool hl_mainloop_has_events();
+#endif
+
 #if defined(HL_WIN_DESKTOP) || defined(HL_XBS)
 #	pragma warning(disable:4091)
 #	undef _GUID
@@ -167,6 +172,13 @@ int main(int argc, char *argv[]) {
 	if( isExc ) {
 		hl_print_uncaught_exception(ret);
 	}
+#ifdef HL_EMSCRIPTEN
+	// For WASM: Keep running to process haxe.MainLoop events (timers, etc.)
+	if( !isExc && hl_mainloop_has_events() ) {
+		hl_mainloop_start();
+		return 0;  // emscripten_set_main_loop never returns
+	}
+#endif
 	hl_global_free();
 	sys_global_exit();
 	return (int)isExc;

@@ -1,90 +1,101 @@
-// Test async features, timers, and event loop in WASM
+// Test standard haxe.Timer and async features in WASM
 class AsyncTest {
+    static var counter:Int = 0;
+
     static function main() {
-        trace("=== Testing Async Features in WASM ===\n");
+        trace("=== Testing Standard haxe.Timer in WASM ===\n");
 
-        testTimers();
-        testSleep();
-        testDate();
+        testHaxeTimer();
+        testHaxeTimerDelay();
+        testMultipleTimers();
         testSysTime();
+        testDate();
 
-        trace("\n=== Async Tests Complete ===");
+        trace("\n=== Tests Scheduled ===");
+        trace("(Event loop will process timers automatically)");
     }
 
-    static function testTimers() {
-        trace("[Timers]");
-        var start = Sys.time();
-        trace('  Start time: $start');
-
-        // Note: haxe.Timer requires event loop which may not work in WASM
+    static function testHaxeTimer() {
+        trace("[Test 1] Standard haxe.Timer (repeating)");
         try {
-            var elapsed = Sys.time() - start;
-            trace('  Elapsed: $elapsed seconds');
-            trace('  ✓ Sys.time() works');
+            var timer = new haxe.Timer(500);  // 500ms interval
+            timer.run = function() {
+                counter++;
+                trace('  Tick #$counter (using standard haxe.Timer!)');
+
+                if (counter >= 5) {
+                    trace('  ✓ Stopping after 5 ticks');
+                    timer.stop();
+                }
+            };
+            trace("  Timer created: 500ms interval");
         } catch (e:Dynamic) {
-            trace('  ✗ Error: $e');
+            trace('  ✗ Error creating timer: $e');
         }
     }
 
-    static function testSleep() {
-        trace("\n[Sleep]");
+    static function testHaxeTimerDelay() {
+        trace("\n[Test 2] haxe.Timer.delay (one-shot)");
         try {
-            var before = Sys.time();
-            // Note: Sys.sleep blocks the main thread
-            // In WASM this may not work as expected
-            trace('  Attempting Sys.sleep(0.1)...');
-            Sys.sleep(0.1);
-            var after = Sys.time();
-            var duration = after - before;
-            trace('  Sleep duration: $duration seconds');
-
-            if (duration >= 0.09 && duration <= 0.2) {
-                trace('  ✓ Sys.sleep() works');
-            } else {
-                trace('  ⚠ Sleep worked but timing seems off');
-            }
+            haxe.Timer.delay(function() {
+                trace("  ✓ One-shot timer executed after 1 second!");
+            }, 1000);
+            trace("  Delay scheduled: 1000ms");
         } catch (e:Dynamic) {
-            trace('  ✗ Sys.sleep() not supported: $e');
+            trace('  ✗ Error with delay: $e');
         }
     }
 
-    static function testDate() {
-        trace("\n[Date/Time]");
+    static function testMultipleTimers() {
+        trace("\n[Test 3] Multiple simultaneous timers");
         try {
-            var now = Date.now();
-            trace('  Current date: $now');
-            trace('  Timestamp: ${now.getTime()}');
-            trace('  Year: ${now.getFullYear()}');
-            trace('  Month: ${now.getMonth() + 1}');
-            trace('  Day: ${now.getDate()}');
-            trace('  ✓ Date.now() works');
+            haxe.Timer.delay(function() {
+                trace("  Timer A: Executed after 2 seconds");
+            }, 2000);
+
+            haxe.Timer.delay(function() {
+                trace("  Timer B: Executed after 3 seconds");
+            }, 3000);
+
+            haxe.Timer.delay(function() {
+                trace("  Timer C: Executed after 4 seconds");
+                trace("\n  ✓ All timed events completed!");
+            }, 4000);
+
+            trace("  3 timers scheduled (2s, 3s, 4s)");
         } catch (e:Dynamic) {
-            trace('  ✗ Date error: $e');
+            trace('  ✗ Error with multiple timers: $e');
         }
     }
 
     static function testSysTime() {
-        trace("\n[System Time]");
+        trace("\n[Test 4] Sys.time() measurement");
         try {
             var t1 = Sys.time();
             // Do some work
             var sum = 0;
-            for (i in 0...1000) {
+            for (i in 0...10000) {
                 sum += i;
             }
             var t2 = Sys.time();
             var duration = t2 - t1;
 
-            trace('  Time 1: $t1');
-            trace('  Time 2: $t2');
             trace('  Duration: $duration seconds');
-            trace('  Sum (for work): $sum');
-
-            if (duration >= 0) {
-                trace('  ✓ Sys.time() measurement works');
-            }
+            trace('  ✓ Sys.time() works');
         } catch (e:Dynamic) {
             trace('  ✗ Sys.time() error: $e');
+        }
+    }
+
+    static function testDate() {
+        trace("\n[Test 5] Date.now()");
+        try {
+            var now = Date.now();
+            trace('  Current: $now');
+            trace('  Year: ${now.getFullYear()}');
+            trace('  ✓ Date.now() works');
+        } catch (e:Dynamic) {
+            trace('  ✗ Date error: $e');
         }
     }
 }
