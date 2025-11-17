@@ -3602,7 +3602,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		r->size = hl_type_size(r->t);
 		r->current = NULL;
 		r->stack.holds = NULL;
-		r->stack.id = (i < 10) ? (X19 + i) : -1; // Hybrid: X19-X28 for first 10 vregs
+		r->stack.id = i;
 		r->stack.kind = RSTACK;
 	}
 	size = 0;
@@ -3939,7 +3939,40 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		case ORet:
 			op_ret(ctx, dst);
 			break;
-		case OIncr:
+	
+	// ===== ARM64 Phase 1: Stack-Based Virtual Register System =====
+	// All vregs stored on stack at [X29 + stackPos]
+	// Temporary registers: X10 (primary), X11 (secondary), X12 (tertiary)
+	
+	#define LOAD_VREG(tmp_reg, vr) \
+		if (vr) { \
+			int _pos = (vr)->stackPos; \
+			if (_pos >= -255 && _pos <= 0) { \
+				arm_ldur_imm(ctx, tmp_reg, X29, _pos, 3); \
+			} else { \
+				arm_load_imm64(ctx, X9, _pos); \
+				arm_add_reg(ctx, X9, X29, X9, true); \
+				arm_ldr_imm(ctx, tmp_reg, X9, 0, 3); \
+			} \
+		}
+	
+	#define STORE_VREG(tmp_reg, vr) \
+		if (vr) { \
+			int _pos = (vr)->stackPos; \
+			if (_pos >= -255 && _pos <= 0) { \
+				arm_stur_imm(ctx, tmp_reg, X29, _pos, 3); \
+			} else { \
+				arm_load_imm64(ctx, X9, _pos); \
+				arm_add_reg(ctx, X9, X29, X9, true); \
+				arm_str_imm(ctx, tmp_reg, X9, 0, 3); \
+			} \
+		}
+	
+	// Helper to define GET_REG for compatibility (but we won't use it)
+	#define GET_REG(vr) X10  // Always returns X10, shouldn't be used in Phase 1
+	
+
+	case OIncr:
 			{
 				if( IS_FLOAT(dst) ) {
 					ASSERT(0);
