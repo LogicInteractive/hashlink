@@ -74,22 +74,12 @@ haxe -hl test_basic.hl -main TestBasic
 LD_LIBRARY_PATH=. ./hl test_basic.hl
 ```
 
-Expected output:
+**Current Expected Output:**
 ```
-=== ARM64 JIT Test ===
-Test 1 - Addition: 5 + 10 = 15
-  fib(0) = 0
-  fib(1) = 1
-  fib(2) = 1
-  fib(3) = 2
-  fib(4) = 3
-  fib(5) = 5
-  fib(6) = 8
-  fib(7) = 13
-  fib(8) = 21
-  fib(9) = 34
-  Sum: 15
+SIGNAL 11
 ```
+
+⚠️ **Note**: Haxe programs currently crash. The JIT compiles successfully but crashes at runtime. This is a known issue being actively debugged.
 
 #### Test 2: Simple Program (No Arrays)
 
@@ -126,20 +116,29 @@ haxe -hl mytest.hl -main MyTest
 LD_LIBRARY_PATH=. ./hl mytest.hl
 ```
 
-## What Works (96% Complete)
+## Current Status ⚠️
 
-✅ **Arithmetic**: +, -, *, /, %
-✅ **Comparisons**: ==, !=, <, >, <=, >=
-✅ **Bitwise**: &, |, ^, <<, >>
-✅ **Control Flow**: if/else, for/while loops, switch
-✅ **Functions**: calls, returns, recursion
-✅ **Data Structures**: arrays, strings, objects, classes
-✅ **Memory**: allocations, garbage collection, references
+**AS OF 2025-11-17: Programs currently crash at runtime**
 
-## What Doesn't Work Yet (4% Missing)
+The ARM64 JIT implementation has made significant progress but is **not yet functional** for running Haxe programs. Current issues:
 
-❌ **Closures**: Anonymous functions, lambdas
-❌ **Exceptions**: try/catch/throw blocks
+❌ **Runtime Crash**: All programs (even empty main() functions) crash with SIGSEGV at PC=0x0
+❌ **Root Cause**: JIT-compiled code attempts to call a NULL function pointer
+❌ **Under Investigation**: vclosure offset bugs have been fixed, but additional issues remain
+
+### What's Been Fixed
+✅ **MOVZ/MOVK Encoding**: Critical instruction encoding bugs resolved
+✅ **vclosure Offsets**: Fixed closure->fun, closure->value, closure->hasValue loading
+✅ **GET_REG Issues**: All 38 operations converted to stack-based access
+✅ **Build System**: Compiles successfully with no errors
+✅ **Infrastructure**: LOAD_VREG/STORE_VREG macros, instruction cache flush
+
+### What Needs Debugging
+❌ **NULL Function Pointer**: Entry point function calls address 0x0
+❌ **Global Functions**: May not be properly initialized for JIT access
+❌ **Indirect Calls**: One or more operations generating invalid BLR instructions
+
+**See ARM64_VCLOSURE_INVESTIGATION.md for detailed debugging information.**
 
 ## Troubleshooting
 
@@ -219,6 +218,8 @@ Once basic testing is complete, we can:
 
 ---
 
-**Status**: ARM64 JIT is 98/102 operations complete (96%)
-**Last Updated**: 2025-11-17
+**Status**: ARM64 JIT compiles but crashes at runtime - debugging in progress
+**Last Updated**: 2025-11-17 (vclosure offset bugs fixed, but crash persists)
 **Branch**: claude/arm-port-vi-01W7cnxC7ajBnBH9UTafTUX5-01P5UrNX1XKXvnZ15A28PbET
+**Latest Commit**: 87f051b (Fix ARM64 vclosure structure field offset bugs)
+**Investigation Report**: See ARM64_VCLOSURE_INVESTIGATION.md
