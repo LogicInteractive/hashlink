@@ -3207,6 +3207,10 @@ static int arm_do_cbz(jit_ctx *ctx, Arm64Reg rt, bool is64);
 static int arm_do_cbnz(jit_ctx *ctx, Arm64Reg rt, bool is64);
 static int arm_do_jump_cond(jit_ctx *ctx, Arm64Condition cond);
 static void arm_patch_cbz(jit_ctx *ctx, int pos, int target);
+static void arm_scvtf(jit_ctx *ctx, Arm64FpReg fd, Arm64Reg rn, bool int64, bool float64);
+static void arm_ucvtf(jit_ctx *ctx, Arm64FpReg fd, Arm64Reg rn, bool int64, bool float64);
+static void arm_fcvtzs(jit_ctx *ctx, Arm64Reg rd, Arm64FpReg fn, bool int64, bool float64);
+static void arm_fcvt(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool src64);
 static void arm_patch_cbnz(jit_ctx *ctx, int pos, int target);
 static void arm_patch_jump(jit_ctx *ctx, int jump_pos);
 static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64);
@@ -6520,9 +6524,32 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case OFloat:
+		// Load float constant
+		// For now, not implemented - would need float literal loading
+		jit_error("Float constant loading not yet implemented in ARM64");
+		break;
+
 	case OToSFloat:
-		// Float operations require FPU register allocation
-		jit_error("Floating point operations not yet implemented in ARM64");
+		// Convert signed integer to float
+		if (dst && ra) {
+			Arm64Reg rn = GET_REG(ra);
+			bool int64 = (ra->t->kind == HI64);
+			bool float64 = (dst->t->kind == HF64);
+
+			// Convert using SCVTF: integer register -> FPU register
+			arm_scvtf(ctx, V0, rn, int64, float64);
+
+			// Move FPU result back to general register for storage
+			// (Since we don't have proper FPU register allocation yet)
+			Arm64Reg rd = GET_REG(dst);
+			// FMOV Xd, Dn  (move FPU to general register)
+			// Format: sf 0 011110 ftype 1 00 110 000000 Rn Rd
+			unsigned int sf = float64 ? 1 : 0;
+			unsigned int ftype = float64 ? 0x01 : 0x00;
+			unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+			                    (0x06 << 16) | arm_reg(rd);
+			B32(inst);
+		}
 		break;
 
 	case OToUFloat:
@@ -7524,6 +7551,47 @@ static void arm_fcmp(jit_ctx *ctx, Arm64FpReg fn, Arm64FpReg fm, bool is64) {
 	unsigned int ftype = is64 ? 1 : 0;
 	unsigned int inst = (0x1E << 24) | (ftype << 22) | (1 << 21) |
 	                    (arm_reg(fm) << 16) | (0x08 << 10) | (arm_reg(fn) << 5);
+	B32(inst);
+}
+
+// SCVTF (Signed Convert to Float): Convert signed integer to float
+// Format: 0 sf 0 11110 ftype(2) 1 00 010 000000 Rn(5) Rd(5)
+// sf=1 for 64-bit int, ftype=0 for F32, ftype=1 for F64
+static void arm_scvtf(jit_ctx *ctx, Arm64FpReg fd, Arm64Reg rn, bool int64, bool float64) {
+	unsigned int sf = int64 ? 1 : 0;
+	unsigned int ftype = float64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x02 << 16) | (arm_reg(rn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// UCVTF (Unsigned Convert to Float): Convert unsigned integer to float
+// Format: 0 sf 0 11110 ftype(2) 1 00 011 000000 Rn(5) Rd(5)
+static void arm_ucvtf(jit_ctx *ctx, Arm64FpReg fd, Arm64Reg rn, bool int64, bool float64) {
+	unsigned int sf = int64 ? 1 : 0;
+	unsigned int ftype = float64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x03 << 16) | (arm_reg(rn) << 5) | arm_reg(fd);
+	B32(inst);
+}
+
+// FCVTZS (Float Convert to Signed integer, rounding towards Zero)
+// Format: 0 sf 0 11110 ftype(2) 1 11 000 000000 Rn(5) Rd(5)
+static void arm_fcvtzs(jit_ctx *ctx, Arm64Reg rd, Arm64FpReg fn, bool int64, bool float64) {
+	unsigned int sf = int64 ? 1 : 0;
+	unsigned int ftype = float64 ? 1 : 0;
+	unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+	                    (0x18 << 16) | (arm_reg(fn) << 5) | arm_reg(rd);
+	B32(inst);
+}
+
+// FCVT (Float Convert between F32 and F64)
+// Format: M 0 S 11110 opc(2) 1 00 0100 00000 Rn(5) Rd(5)
+// opc: 00=S to H, 01=D to H, 10=H to S, 11=S to D, 00=D to S, 01=H to D
+static void arm_fcvt(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool src64) {
+	unsigned int opc = src64 ? 0x01 : 0x03;  // D to S or S to D
+	unsigned int inst = (0x1E << 24) | (opc << 22) | (1 << 21) |
+	                    (0x04 << 15) | (arm_reg(fn) << 5) | arm_reg(fd);
 	B32(inst);
 }
 
