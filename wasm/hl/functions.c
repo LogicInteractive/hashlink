@@ -295,12 +295,12 @@ sys__thread___Thread__HaxeThread sys_thread__Thread_HaxeThread_current(void);
 #include <hl/natives.h>
 void sys_thread__Thread_HaxeThread_new(sys__thread___Thread__HaxeThread,hl_thread*);
 void haxe_Timer_new(haxe__Timer,int);
+String Std_string(vdynamic*);
 double Math_max(double,double);
 #include <_std/Date.h>
 void Date_new(Date,int,int,int,int,int,int);
 String Date_toString(Date);
 vbyte* Date___string(Date);
-String Std_string(vdynamic*);
 vdynamic* Std___add__(vdynamic*,vdynamic*);
 hl__types__ArrayObj hl_types_ArrayObj_alloc(varray*);
 #include <_std/StringBuf.h>
@@ -620,17 +620,17 @@ extern hl_type t$fun_294d21b;
 extern hl_type t$fun_f8bb930;
 extern hl_type t$fun_88c6b31;
 extern hl_type t$fun_a105048;
+extern hl_type t$fun_fab01bb;
+extern hl_type t$fun_baf777f;
 extern hl_type t$fun_0baea77;
 extern hl_type t$fun_431ce16;
 extern hl_type t$fun_e5a2d8d;
-extern hl_type t$fun_fab01bb;
 extern hl_type t$fun_7180aec;
 extern hl_type t$fun_67512d4;
 extern hl_type t$fun_d420bf5;
 extern hl_type t$fun_9dd8397;
 extern hl_type t$fun_cb6e3d3;
 extern hl_type t$fun_b7334d8;
-extern hl_type t$fun_baf777f;
 extern hl_type t$fun_e7027a9;
 extern hl_type t$fun_1793431;
 extern hl_type t$fun_5daea2a;
@@ -1031,11 +1031,12 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	sys_thread__Thread_HaxeThread_current,\
 	sys_thread__Thread_HaxeThread_new,\
 	haxe_Timer_new,\
+	hl_itos,\
+	Std_string,\
 	hl_math_floor,\
 	Math_max,\
 	hl_math_cos,\
 	hl_math_sin,\
-	hl_itos,\
 	hl_math_abs,\
 	hl_date_new,\
 	hl_date_to_string,\
@@ -1044,7 +1045,6 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	Date___string,\
 	hl_math_isnan,\
 	hl_rnd_init_system,\
-	Std_string,\
 	hl_value_to_string,\
 	Std___add__,\
 	hl_alloc_bytes,\
@@ -1474,11 +1474,12 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_f8bb930,\
 	&t$fun_88c6b31,\
 	&t$fun_a105048,\
+	&t$fun_fab01bb,\
+	&t$fun_baf777f,\
 	&t$fun_0baea77,\
 	&t$fun_431ce16,\
 	&t$fun_e5a2d8d,\
 	&t$fun_e5a2d8d,\
-	&t$fun_fab01bb,\
 	&t$fun_e5a2d8d,\
 	&t$fun_7180aec,\
 	&t$fun_fab01bb,\
@@ -1487,7 +1488,6 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_9dd8397,\
 	&t$fun_cb6e3d3,\
 	&t$fun_b7334d8,\
-	&t$fun_baf777f,\
 	&t$fun_e7027a9,\
 	&t$fun_1793431,\
 	&t$fun_5daea2a,\
