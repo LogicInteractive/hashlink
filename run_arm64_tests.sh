@@ -82,6 +82,7 @@ run_test "test_field_access"
 run_test "test_conversions"
 run_test "test_exceptions"
 run_test "test_dynset"
+run_test "test_dynget"
 run_test "test_enumfield"
 
 echo "========================================"

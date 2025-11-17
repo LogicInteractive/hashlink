@@ -24,7 +24,7 @@ This is an **ARM64/AArch64 port of the HashLink JIT compiler**. The existing JIT
 Implement a complete ARM64 JIT compiler that can translate all 102 HashLink bytecode operations into ARM64 machine code, achieving performance parity with the x86-64 JIT.
 
 ### Current Status
-**Phase 3: 96/102 operations implemented (94% complete)**
+**Phase 3: 97/102 operations implemented (95% complete)**
 
 ---
 
@@ -392,8 +392,50 @@ arm_str_imm(ctx, rn, X9, 0, 3);  // STR Xn, [X9]
 
 ---
 
-#### 3.11 Dynamic Operations (1/2) ✅
-**Operations:** ODynGet (placeholder), ODynSet
+#### 3.11 Dynamic Operations (2/2) ✅
+**Operations:** ODynGet, ODynSet
+
+**ODynGet - Dynamic Field Read:**
+Allows reading fields from dynamic objects by name at runtime.
+
+**How It Works:**
+1. Hash field name at compile time
+2. Determine type of field being read (destination type)
+3. Call appropriate runtime getter function
+4. Pass: object (X0), hash (X1), [type (X2) if needed]
+5. Result returned in X0
+
+**Type Dispatch:**
+```c
+switch (dst->t->kind) {
+    case HF32:  get_func = hl_dyn_getf; break;      // Float (no type arg)
+    case HF64:  get_func = hl_dyn_getd; break;      // Double (no type arg)
+    case HI64:  get_func = hl_dyn_geti64; break;    // 64-bit int (no type arg)
+    case HI32:  get_func = hl_dyn_geti; break;      // 32-bit int (needs type)
+    case HBOOL: get_func = hl_dyn_geti; break;      // Bool (needs type)
+    default:    get_func = hl_dyn_getp; break;      // Pointer (needs type)
+}
+```
+
+**Implementation:**
+```c
+uint64_t hash = hl_hash_gen(hl_get_ustring(m->code, o->p3), true);
+// Move object to X0
+arm_mov_reg(ctx, X0, r_obj, true);
+// Load hash into X1
+arm_load_imm64(ctx, X1, hash);
+// Load type into X2 (if needed for geti/getp)
+if (needs_type_arg) {
+    arm_load_imm64(ctx, X2, (uint64_t)dst->t);
+}
+// Call getter
+arm_load_imm64(ctx, X9, (uint64_t)get_func);
+B32(0xd63f0120);  // BLR X9
+// Result in X0, move to destination if needed
+if (rd != X0) {
+    arm_mov_reg(ctx, rd, X0, true);
+}
+```
 
 **ODynSet - Dynamic Field Write:**
 Allows setting fields on dynamic objects by name at runtime.
@@ -428,9 +470,6 @@ arm_mov_reg(ctx, X2, r_obj, true);
 arm_load_imm64(ctx, X9, (uint64_t)set_func);
 B32(0xd63f0120);  // BLR X9
 ```
-
-**Not Implemented:**
-- ODynGet: Would need similar dispatch for getters
 
 ---
 
@@ -893,7 +932,7 @@ Makefile                   - Build configuration
 
 ## Implementation Status
 
-### Completed (96/102 operations - 94%)
+### Completed (97/102 operations - 95%)
 
 **Fully Working:**
 - ✅ All arithmetic (10/10)
@@ -908,12 +947,12 @@ Makefile                   - Build configuration
 - ✅ Most type operations (9/10)
 - ✅ Most reference operations (4/5)
 - ✅ Global variables (2/2)
-- ✅ Some dynamic operations (1/2)
+- ✅ All dynamic operations (2/2)
 - ✅ Some exception handling (2/5)
 - ✅ Some enum operations (1/5)
 - ✅ All control flow (5/5)
 
-### Not Implemented (6 operations - 6%)
+### Not Implemented (5 operations - 5%)
 
 **Remaining Placeholders:**
 
@@ -937,17 +976,12 @@ Makefile                   - Build configuration
    - **What's missing:** FPU register allocation
    - **Effort:** ~500 lines (FPU allocator)
 
-5. **ODynGet** - Dynamic field read
-   - **Why needed:** Reflection, dynamic languages
-   - **What's missing:** Runtime type lookup
-   - **Effort:** ~100 lines (similar to ODynSet)
-
-6. **OMakeEnum** + others - Enum allocation
+5. **OMakeEnum** + others - Enum allocation
    - **Why needed:** Algebraic data types
    - **What's missing:** Enum runtime
    - **Effort:** ~200 lines (enum allocation)
 
-**Total remaining effort:** ~1,500 lines of code
+**Total remaining effort:** ~1,400 lines of code
 
 ---
 

@@ -6085,8 +6085,94 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case ODynGet:
-		// Dynamic field access requires runtime lookup
-		jit_error("Dynamic operations not yet implemented in ARM64");
+		{
+			// Get dynamic field: dst = obj.field
+			// Calls different getter functions based on destination type
+			if (dst && ra) {
+				// Get field name hash
+				uint64_t hash = hl_hash_gen(hl_get_ustring(m->code, o->p3), true);
+				void *get_func = NULL;
+				bool needs_type_arg = false;
+
+				// Determine which getter to call based on destination type
+				switch (dst->t->kind) {
+				case HF32:
+					get_func = hl_dyn_getf;
+					break;
+				case HF64:
+					get_func = hl_dyn_getd;
+					break;
+				case HI64:
+				case HGUID:
+					get_func = hl_dyn_geti64;
+					break;
+				case HI32:
+				case HUI16:
+				case HUI8:
+				case HI8:
+				case HI16:
+				case HBOOL:
+					get_func = hl_dyn_geti;
+					needs_type_arg = true;  // hl_dyn_geti needs type parameter
+					break;
+				default:
+					// Pointer types
+					get_func = hl_dyn_getp;
+					needs_type_arg = true;  // hl_dyn_getp needs type parameter
+					break;
+				}
+
+				if (get_func) {
+					Arm64Reg rd = GET_REG(dst);
+					Arm64Reg r_obj = GET_REG(ra);
+
+					if (needs_type_arg) {
+						// Arguments: object (X0), hash (X1), type (X2)
+						// Move object to X0
+						if (r_obj != X0) {
+							arm_mov_reg(ctx, X0, r_obj, true);
+						}
+
+						// Load hash into X1
+						arm_load_imm64(ctx, X1, hash);
+
+						// Load type pointer into X2
+						arm_load_imm64(ctx, X2, (uint64_t)dst->t);
+
+						// Load function pointer into X9
+						arm_load_imm64(ctx, X9, (uint64_t)get_func);
+
+						// BLR X9
+						B32(0xd63f0120);
+
+						// Result in X0, move to destination if needed
+						if (rd != X0) {
+							arm_mov_reg(ctx, rd, X0, true);
+						}
+					} else {
+						// Arguments: object (X0), hash (X1)
+						// Move object to X0
+						if (r_obj != X0) {
+							arm_mov_reg(ctx, X0, r_obj, true);
+						}
+
+						// Load hash into X1
+						arm_load_imm64(ctx, X1, hash);
+
+						// Load function pointer into X9
+						arm_load_imm64(ctx, X9, (uint64_t)get_func);
+
+						// BLR X9
+						B32(0xd63f0120);
+
+						// Result in X0, move to destination if needed
+						if (rd != X0) {
+							arm_mov_reg(ctx, rd, X0, true);
+						}
+					}
+				}
+			}
+		}
 		break;
 
 	case ODynSet:

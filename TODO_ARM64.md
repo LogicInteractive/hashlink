@@ -1,13 +1,13 @@
 # HashLink ARM64 JIT - TODO List
 
 ## Current Status
-**Phase 3: 96/102 operations (94% complete)**
+**Phase 3: 97/102 operations (95% complete)**
 
 Last Updated: 2025-11-17
 
 ---
 
-## Phase 3: Remaining Operations (6 items)
+## Phase 3: Remaining Operations (5 items)
 
 ### 1. ORef - Get Stack Variable Address
 **Priority:** HIGH
@@ -207,65 +207,7 @@ case OToSFloat:
 
 ---
 
-### 5. ODynGet - Dynamic Field Read
-**Priority:** MEDIUM
-**Difficulty:** LOW
-**Estimated Effort:** 100 lines, 1 day
-
-**What it does:**
-- Reads field from dynamic object by name
-- Runtime type lookup
-
-**Why needed:**
-- Reflection
-- Dynamic languages features
-- Property access patterns
-
-**What's missing:**
-- Runtime getter dispatch (similar to ODynSet)
-
-**Implementation approach:**
-```c
-case ODynGet:
-    // Hash field name
-    uint64_t hash = hl_hash_gen(hl_get_ustring(m->code, o->p2), true);
-
-    // Determine getter function based on expected type
-    void *get_func = NULL;
-    switch (dst->t->kind) {
-        case HF32:  get_func = hl_dyn_getf; break;
-        case HF64:  get_func = hl_dyn_getd; break;
-        case HI64:  get_func = hl_dyn_geti64; break;
-        case HI32:  get_func = hl_dyn_geti; break;
-        default:    get_func = hl_dyn_getp; break;
-    }
-
-    // Call: getter(object, hash)
-    arm_mov_reg(ctx, X0, r_obj, true);     // Object
-    arm_load_imm64(ctx, X1, hash);         // Hash
-    arm_load_imm64(ctx, X9, (uint64_t)get_func);
-    B32(0xd63f0120);  // BLR X9
-
-    // Result in X0
-    if (rd != X0) {
-        arm_mov_reg(ctx, rd, X0, true);
-    }
-    break;
-```
-
-**Dependencies:**
-- Runtime getter functions (hl_dyn_geti, etc.) - already exist
-- Similar to ODynSet (already implemented)
-
-**Testing:**
-- Test reading integer fields
-- Test reading pointer fields
-- Test reading float fields
-- Test non-existent fields (should return null)
-
----
-
-### 6. OMakeEnum - Enum Value Allocation
+### 5. OMakeEnum - Enum Value Allocation
 **Priority:** LOW
 **Difficulty:** MEDIUM
 **Estimated Effort:** 200 lines, 1-2 days
@@ -678,7 +620,7 @@ After:
 
 ### Phase 3 Completion (to 99%)
 **Time:** 2-3 weeks
-**Effort:** ~600 lines of code
+**Effort:** ~500 lines of code
 **Priority:** HIGH
 
 ### Phase 4 (Infrastructure)
@@ -756,7 +698,7 @@ After:
 
 ## Quick Reference
 
-### What Can Run Now (94%)
+### What Can Run Now (95%)
 - ✅ Integer arithmetic
 - ✅ Logical operations
 - ✅ Control flow (loops, conditionals)
@@ -766,20 +708,20 @@ After:
 - ✅ Field access
 - ✅ Global variables
 - ✅ Type operations
+- ✅ Dynamic field access (ODynGet, ODynSet)
 - ✅ Basic exception throwing
 
-### What Can't Run Yet (6%)
+### What Can't Run Yet (5%)
 - ❌ Stack variable references (ORef)
 - ❌ Closure calls (OCallClosure)
 - ❌ Exception handlers (OEndTrap)
 - ❌ Float conversions (OToSFloat)
-- ❌ Dynamic field reads (ODynGet)
 - ❌ Enum allocation (OMakeEnum)
 - ❌ Full FPU operations
 - ❌ Complex exception handling
 
 ### Priority Order
-1. **Immediate:** ODynGet, ORef, OMakeEnum (simple fixes)
+1. **Immediate:** ORef, OMakeEnum (simple fixes)
 2. **Short-term:** FPU support, Stack frames (infrastructure)
 3. **Medium-term:** Closures, Trap stack (features)
 4. **Long-term:** Optimization, Benchmarking (polish)
@@ -787,5 +729,5 @@ After:
 ---
 
 *Last Updated: 2025-11-17*
-*Current Status: Phase 3 - 96/102 operations (94%)*
+*Current Status: Phase 3 - 97/102 operations (95%)*
 *Next Milestone: Phase 3 completion (99%)*

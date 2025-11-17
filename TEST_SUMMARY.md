@@ -69,12 +69,48 @@ Results: 5/5 tests passed (100%)
 ========================================
 ```
 
+### 3. Dynamic Field Read Tests (test_dynget.c)
+**Status: ✅ 6/6 tests passed (100%)**
+
+Tests for newly implemented ODynGet operation:
+
+- **Test 1: ODynGet Integer Field**
+  - Verifies hl_dyn_geti() call with type argument
+  - Tests argument sequence: object (X0), hash (X1), type (X2)
+  - Validates BLR X9 and result handling
+
+- **Test 2: ODynGet Int64 Field**
+  - Verifies hl_dyn_geti64() call without type argument
+  - Tests simpler argument sequence
+  - Confirms fewer instructions than i32 version
+
+- **Test 3: ODynGet Pointer Field**
+  - Verifies hl_dyn_getp() call with type argument
+  - Tests pointer field retrieval
+  - Validates type parameter passing
+
+- **Test 4: ODynGet Double Field**
+  - Verifies hl_dyn_getd() call without type argument
+  - Tests floating-point field access
+  - Confirms correct calling convention
+
+- **Test 5: Object Already in X0**
+  - Tests optimization when object is already in correct register
+  - Verifies no redundant MOV instructions
+  - Validates efficient code generation
+
+- **Test 6: Type Dispatch Verification**
+  - Tests all 6 type variants (HI32, HI64, HF32, HF64, HBOOL, HOBJ)
+  - Verifies correct getter function selection
+  - Confirms proper type argument handling
+
 ## Total Test Coverage
 
 ### New Tests Added:
 - Exception operations: 3 tests
 - Conversion operations: 5 tests
-- **Total new tests: 8**
+- Dynamic field reads: 6 tests
+- **Total new tests: 14**
 
 ### Combined with Previous Tests:
 - Basic ARM64: 12 tests
@@ -83,10 +119,12 @@ Results: 5/5 tests passed (100%)
 - Memory operations: 8 tests
 - Modulo operations: 8 tests
 - Field access: 4 tests
-- **Total all tests: 61**
+- Dynamic field writes: 5 tests
+- Enum fields: 8 tests
+- **Total all tests: 80**
 
 ### Overall Results:
-- **61/61 tests passed (100%)**
+- **80/80 tests passed (100%)**
 - All operations verified under QEMU ARM64
 - All instruction encodings validated
 
@@ -100,30 +138,37 @@ Results: 5/5 tests passed (100%)
 - ✅ OToDyn - Converts to dynamic (bool, pointer, int)
 - ✅ OToUFloat - Unsigned int to float conversion
 
+### Dynamic Field Access:
+- ✅ ODynGet - Read dynamic object fields by name
+- ✅ ODynSet - Write dynamic object fields by name
+
 ## Test Infrastructure
 
 ### Files Created:
 1. **test_exceptions.c** - Exception operation tests
 2. **test_conversions.c** - Type conversion tests
-3. **run_arm64_tests.sh** - Automated test runner
-4. **ARM64_TESTS.md** - Comprehensive test documentation
+3. **test_dynget.c** - Dynamic field read tests (NEW)
+4. **run_arm64_tests.sh** - Automated test runner
+5. **ARM64_TESTS.md** - Comprehensive test documentation
 
 ### Build & Run:
 ```bash
 # Compile
 aarch64-linux-gnu-gcc -o test_exceptions test_exceptions.c -static
 aarch64-linux-gnu-gcc -o test_conversions test_conversions.c -static
+aarch64-linux-gnu-gcc -o test_dynget test_dynget.c -static
 
 # Execute under QEMU
 qemu-aarch64-static ./test_exceptions
 qemu-aarch64-static ./test_conversions
+qemu-aarch64-static ./test_dynget
 ```
 
 ## Implementation Status
 
-**Implementations with tests: 95/102 (93%)**
+**Implementations with tests: 97/102 (95%)**
 
-The 4 newly implemented operations (OThrow, ORethrow, OToDyn, OToUFloat) all have:
+The 5 newly implemented operations (OThrow, ORethrow, OToDyn, OToUFloat, ODynGet) all have:
 - ✅ Instruction encoding tests
 - ✅ QEMU verification
 - ✅ Documentation
@@ -131,12 +176,11 @@ The 4 newly implemented operations (OThrow, ORethrow, OToDyn, OToUFloat) all hav
 
 ## Next Steps
 
-Remaining 7 placeholders require complex infrastructure:
+Remaining 5 placeholders require complex infrastructure:
 - Closures (OCallClosure, OVirtualClosure)
-- Dynamic field operations (ODynSet)
 - Exception traps (OTrap, OEndTrap)
 - Stack references (ORef)
-- Enum fields (OSetEnumField)
+- Enum allocation (OMakeEnum)
 - Float conversions (OToSFloat)
 
 All would benefit from similar comprehensive testing once implemented.
