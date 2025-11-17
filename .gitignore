@@ -75,3 +75,9 @@ args.txt
 !/wasm/standardtimer.html
 !/wasm/standardtimer.js
 !/wasm/standardtimer.wasm
+!/wasm/httptest.html
+!/wasm/httptest.js
+!/wasm/httptest.wasm
+!/wasm/fulltest.html
+!/wasm/fulltest.js
+!/wasm/fulltest.wasm
