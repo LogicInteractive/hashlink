@@ -3193,6 +3193,8 @@ static void arm_ldr_reg(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, Arm64Reg rm, int
 static void arm_str_reg(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, Arm64Reg rm, int size);
 static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size);
 static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size);
+static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int size);
+static void arm_stur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int size);
 static int arm_b(jit_ctx *ctx, int offset);
 static int arm_b_cond(jit_ctx *ctx, Arm64Condition cond, int offset);
 static int arm_cbz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64);
@@ -3286,7 +3288,8 @@ static void jit_null_field_access_arm64( jit_ctx *ctx ) {
 
 	// Load field hash argument from stack
 	// First stack argument is at [FP + 16] (after saved FP/LR)
-	arm_ldr_imm(ctx, X0, X29, 16, 8);  // Load 64-bit value
+	// For 64-bit load (size=3), offset is in units of 8 bytes: 16/8=2
+	arm_ldr_imm(ctx, X0, X29, 2, 3);  // Load 64-bit value at offset 16 bytes
 
 	// Load jit_null_fail function address into X9
 	arm_load_imm64(ctx, X9, (uint64_t)jit_null_fail);
@@ -5954,8 +5957,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					
 					// Store value into dynamic
 					Arm64Reg rn_temp = GET_REG(ra);
-					// STR rn, [X0, #HL_WSIZE]
-					arm_str_imm(ctx, rn_temp, X0, HL_WSIZE, 3);
+					// STR rn, [X0, #HL_WSIZE] - offset scaled: 8 bytes / 8 = 1
+					arm_str_imm(ctx, rn_temp, X0, 1, 3);
 					
 					if (rd != X0) {
 						arm_mov_reg(ctx, rd, X0, true);
@@ -5974,9 +5977,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_dynamic);
 					B32(0xd63f0120);  // BLR X9
 					
-					// Store value
+					// Store value - offset scaled: 8 bytes / 8 = 1
 					Arm64Reg rn_temp = GET_REG(ra);
-					arm_str_imm(ctx, rn_temp, X0, HL_WSIZE, 3);
+					arm_str_imm(ctx, rn_temp, X0, 1, 3);
 					
 					if (rd != X0) {
 						arm_mov_reg(ctx, rd, X0, true);
@@ -6268,8 +6271,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// CBZ rn, null_case
 				int null_jump = arm_do_cbz(ctx, rn, true);
 
-				// Not null: load type from offset -HL_WSIZE
-				arm_ldr_imm(ctx, rd, rn, -HL_WSIZE, 3);
+				// Not null: load type from offset -HL_WSIZE (-8 bytes)
+				arm_ldur_imm(ctx, rd, rn, -HL_WSIZE, 3);
 
 				// Jump over null case
 				int end_jump = arm_do_jump(ctx);
@@ -7053,8 +7056,13 @@ static void arm_ldr_literal(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64) {
 
 // LDR (unsigned offset): Load register from [rn + (imm12 << size)]
 // Format: size(2) 111 0 01 imm12(12) Rn(5) Rt(5)
+// NOTE: imm12 is already scaled (offset in units of access size)
+//       For size=3 (8-byte): imm12=2 means byte offset=16
+// Maximum offset: (4095 << size) bytes
 static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
+	// Check if offset fits in 12 bits unsigned
 	if (!arm_fits_unsigned(imm12, 12)) {
+		// Offset too large - caller must use register offset or alternative
 		ASSERT(5);
 		return;
 	}
@@ -7065,12 +7073,43 @@ static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 
 // STR (unsigned offset): Store register to [rn + (imm12 << size)]
 // Format: size(2) 111 0 00 imm12(12) Rn(5) Rt(5)
+// NOTE: imm12 is already scaled (offset in units of access size)
 static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
 	if (!arm_fits_unsigned(imm12, 12)) {
 		ASSERT(6);
 		return;
 	}
 	unsigned int inst = (size << 30) | (0x39 << 24) | (0 << 22) | (imm12 << 10) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// LDUR (unscaled offset): Load register from [rn + imm9]
+// Format: size(2) 111 0 00 imm9(9) 00 Rn(5) Rt(5)
+// NOTE: imm9 is a SIGNED 9-bit byte offset (NOT scaled), range -256 to +255
+static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int size) {
+	// Check if offset fits in signed 9 bits
+	if (imm9 < -256 || imm9 > 255) {
+		ASSERT(7);
+		return;
+	}
+	// Encode as unsigned 9-bit value (two's complement)
+	unsigned int imm9_encoded = imm9 & 0x1FF;
+	unsigned int inst = (size << 30) | (0x38 << 24) | (imm9_encoded << 12) |
+	                    (arm_reg(rn) << 5) | arm_reg(rt);
+	B32(inst);
+}
+
+// STUR (unscaled offset): Store register to [rn + imm9]
+// Format: size(2) 111 0 00 imm9(9) 00 Rn(5) Rt(5)
+// NOTE: imm9 is a SIGNED 9-bit byte offset (NOT scaled), range -256 to +255
+static void arm_stur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int size) {
+	if (imm9 < -256 || imm9 > 255) {
+		ASSERT(8);
+		return;
+	}
+	unsigned int imm9_encoded = imm9 & 0x1FF;
+	unsigned int inst = (size << 30) | (0x38 << 24) | (imm9_encoded << 12) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
