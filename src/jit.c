@@ -5008,11 +5008,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			vreg *obj = R(o->extra[0]);
 
 			if (obj->t->kind == HOBJ || obj->t->kind == HSTRUCT) {
-				Arm64Reg r_obj = GET_REG(obj);
+				// Load object from stack into X10
+				LOAD_VREG(X10, obj);
 
 				// Read type from object (offset 0)
-				// LDR X9, [r_obj, #0]
-				arm_ldr_imm(ctx, X9, r_obj, 0, 3);
+				// LDR X9, [X10, #0]
+				arm_ldr_imm(ctx, X9, X10, 0, 3);
 
 				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
 				// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
@@ -5021,12 +5022,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// Set up arguments from o->extra (object and additional args)
 				for (i = 0; i < o->p3 && i < 8; i++) {
 					vreg *arg = R(o->extra[i]);
-					Arm64Reg src = GET_REG(arg);
 					Arm64Reg dst_reg = X0 + i;
-
-					if (src != dst_reg) {
-						arm_mov_reg(ctx, dst_reg, src, true);
-					}
+					// Load directly into argument register
+					LOAD_VREG(dst_reg, arg);
 				}
 
 				if (o->p3 > 8) {
@@ -5038,9 +5036,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (o->p2 < 4096) {
 					arm_ldr_imm(ctx, X9, X9, o->p2, 3);
 				} else {
-					Arm64Reg temp = X10;
-					arm_load_imm64(ctx, temp, o->p2 * HL_WSIZE);
-					arm_ldr_reg(ctx, X9, X9, temp, 3);
+					arm_load_imm64(ctx, X11, o->p2 * HL_WSIZE);
+					arm_ldr_reg(ctx, X9, X9, X11, 3);
 				}
 
 				// Call the method
@@ -5048,10 +5045,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Store result if needed
 				if (dst && dst->t->kind != HVOID) {
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
+					STORE_VREG(X0, dst);
 				}
 			} else {
 				jit_error("OCallMethod: unsupported object type");
@@ -5064,30 +5058,24 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Call method on "this" object (register 0)
 			// this->type->proto[method_index](this, args...)
 			vreg *r = R(0);  // "this" is always register 0
-			Arm64Reg r_this = GET_REG(r);
+
+			// Load "this" directly into X0 (first argument)
+			LOAD_VREG(X0, r);
 
 			// Read type from this (offset 0)
-			// LDR X9, [r_this, #0]
-			arm_ldr_imm(ctx, X9, r_this, 0, 3);
+			// LDR X9, [X0, #0]
+			arm_ldr_imm(ctx, X9, X0, 0, 3);
 
 			// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
 			// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
 			arm_ldr_imm(ctx, X9, X9, 2, 3);
 
-			// Set up arguments: X0 = this, X1-X7 = extra args
-			if (r_this != X0) {
-				arm_mov_reg(ctx, X0, r_this, true);
-			}
-
 			// Move additional arguments to X1-X7
 			for (i = 0; i < o->p3 && i < 7; i++) {
 				vreg *arg = R(o->extra[i]);
-				Arm64Reg src = GET_REG(arg);
 				Arm64Reg dst_reg = X1 + i;
-
-				if (src != dst_reg) {
-					arm_mov_reg(ctx, dst_reg, src, true);
-				}
+				// Load directly into argument register
+				LOAD_VREG(dst_reg, arg);
 			}
 
 			if (o->p3 > 7) {
@@ -5162,11 +5150,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Regular closure: struct { fun, value, hasValue }
 			// if (closure->hasValue) call fun(value, args...) else call fun(args...)
 
-			Arm64Reg r_closure = GET_REG(ra);
+			// Load closure into X11 (preserve across branches)
+			LOAD_VREG(X11, ra);
 
 			// Load hasValue flag from closure (offset = HL_WSIZE * 2 = 16 bytes)
 			// For size=3 (64-bit), scaled offset = 16/8 = 2
-			arm_ldr_imm(ctx, X10, r_closure, 2, 3);
+			arm_ldr_imm(ctx, X10, X11, 2, 3);
 
 			// Test if hasValue is non-zero
 			// CBZ X10, no_value_case
@@ -5174,18 +5163,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// HAS VALUE CASE: Load value and pass as first argument
 			// Load closure->value (offset = HL_WSIZE = 8 bytes, scaled = 1)
-			arm_ldr_imm(ctx, X0, r_closure, 1, 3);
+			arm_ldr_imm(ctx, X0, X11, 1, 3);
 
 			// Set up remaining arguments (shift by 1)
 			for (i = 0; i < o->p3; i++) {
 				vreg *arg = R(o->extra[i]);
-				Arm64Reg src = GET_REG(arg);
 				Arm64Reg dst_reg = (i < 7) ? (X1 + i) : X9;  // X1-X7 for args 1-7
 
 				if (i < 7) {
-					if (src != dst_reg) {
-						arm_mov_reg(ctx, dst_reg, src, true);
-					}
+					LOAD_VREG(dst_reg, arg);
 				} else {
 					// Stack args not yet implemented
 					jit_error("Closures with >7 args not yet implemented");
@@ -5194,7 +5180,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Load function pointer and call
 			// closure->fun is at offset 0
-			arm_ldr_imm(ctx, X9, r_closure, 0, 3);
+			arm_ldr_imm(ctx, X9, X11, 0, 3);
 			arm_blr(ctx, X9);
 
 			// Jump over no-value case
@@ -5206,20 +5192,17 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Set up arguments
 			for (i = 0; i < o->p3; i++) {
 				vreg *arg = R(o->extra[i]);
-				Arm64Reg src = GET_REG(arg);
 				Arm64Reg dst_reg = (i < 8) ? (X0 + i) : X9;
 
 				if (i < 8) {
-					if (src != dst_reg) {
-						arm_mov_reg(ctx, dst_reg, src, true);
-					}
+					LOAD_VREG(dst_reg, arg);
 				} else {
 					jit_error("Closures with >8 args not yet implemented");
 				}
 			}
 
 			// Load function pointer and call
-			arm_ldr_imm(ctx, X9, r_closure, 0, 3);
+			arm_ldr_imm(ctx, X9, X11, 0, 3);
 			arm_blr(ctx, X9);
 
 			// Patch end jump
