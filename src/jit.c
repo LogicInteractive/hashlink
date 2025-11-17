@@ -552,6 +552,40 @@ static void _jit_error( jit_ctx *ctx, const char *msg, int line );
 static void on_jit_error( const char *msg, int_val line );
 
 // =====================================================================
+// Shared Helper Functions (used by both x86 and ARM64)
+// =====================================================================
+
+static int stack_size( hl_type *t ) {
+	switch( t->kind ) {
+	case HUI8:
+	case HUI16:
+	case HBOOL:
+#ifdef HL_64
+	case HI32:
+	case HF32:
+#endif
+		return sizeof(int_val);
+	case HI64:
+	default:
+		return hl_type_size(t);
+	}
+}
+
+static void register_jump( jit_ctx *ctx, int pos, int target ) {
+	jlist *j = (jlist*)hl_malloc(&ctx->falloc, sizeof(jlist));
+	j->pos = pos;
+	j->target = target;
+	j->next = ctx->jumps;
+	ctx->jumps = j;
+	if( target != 0 && ctx->opsPos[target] == 0 )
+		ctx->opsPos[target] = -1;
+}
+
+static double uint_to_double( unsigned int v ) {
+	return v;
+}
+
+// =====================================================================
 // x86/x86-64 JIT Implementation
 // =====================================================================
 #ifdef HL_JIT_X86
@@ -5682,7 +5716,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			void *fptr = m->functions_ptrs[o->p2];
 			if (fptr) {
 				// Move argument to X0
-				vreg *arg0 = hl_get_reg(f, o->p3);
+				vreg *arg0 = R(o->p3);
 				if (arg0) {
 					Arm64Reg r0 = GET_REG(arg0);
 					if (r0 != X0) {
@@ -5710,8 +5744,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			void *fptr = m->functions_ptrs[o->p2];
 			if (fptr) {
 				// Move arguments to X0, X1
-				vreg *arg0 = hl_get_reg(f, o->p3);
-				vreg *arg1 = hl_get_reg(f, (int)(int_val)o->extra);
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = R((int)(int_val)o->extra);
 				// Move arg1 first to avoid clobbering
 				if (arg1) {
 					Arm64Reg r1 = GET_REG(arg1);
@@ -5746,9 +5780,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			void *fptr = m->functions_ptrs[o->p2];
 			if (fptr) {
 				// Move arguments to X0, X1, X2
-				vreg *arg0 = hl_get_reg(f, o->p3);
-				vreg *arg1 = hl_get_reg(f, o->extra[0]);
-				vreg *arg2 = hl_get_reg(f, o->extra[1]);
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = R(o->extra[0]);
+				vreg *arg2 = R(o->extra[1]);
 				// Move in reverse order to avoid clobbering
 				if (arg2) {
 					Arm64Reg r2 = GET_REG(arg2);
@@ -5789,10 +5823,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			void *fptr = m->functions_ptrs[o->p2];
 			if (fptr) {
 				// Move arguments to X0, X1, X2, X3
-				vreg *arg0 = hl_get_reg(f, o->p3);
-				vreg *arg1 = hl_get_reg(f, o->extra[0]);
-				vreg *arg2 = hl_get_reg(f, o->extra[1]);
-				vreg *arg3 = hl_get_reg(f, o->extra[2]);
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = R(o->extra[0]);
+				vreg *arg2 = R(o->extra[1]);
+				vreg *arg3 = R(o->extra[2]);
 				// Move in reverse order to avoid clobbering
 				if (arg3) {
 					Arm64Reg r3 = GET_REG(arg3);
@@ -5951,7 +5985,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Move arguments to X0-X7 in reverse order
 				for (int i = nargs - 1; i >= 0; i--) {
-					vreg *arg = hl_get_reg(f, o->extra[i]);
+					vreg *arg = R(o->extra[i]);
 					if (arg && i < 8) {
 						Arm64Reg target = (Arm64Reg)(X0 + i);
 						Arm64Reg source = GET_REG(arg);
@@ -6165,7 +6199,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		{
 			// Convert unsigned int to float - call uint_to_double
 			if (dst && ra) {
-				vreg *arg = hl_get_reg(f, o->p2);
+				vreg *arg = R(o->p2);
 				if (arg) {
 					Arm64Reg r0 = GET_REG(arg);
 					if (r0 != X0) {
@@ -6354,7 +6388,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		{
 			// Throw exception - call hl_throw(value)
 			if (ra) {
-				vreg *arg = hl_get_reg(f, o->p1);
+				vreg *arg = R(o->p1);
 				if (arg) {
 					Arm64Reg r0 = GET_REG(arg);
 					if (r0 != X0) {
@@ -6372,7 +6406,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case ORethrow:
 		{
 			// Rethrow exception - call hl_rethrow(value)
-			vreg *arg = hl_get_reg(f, o->p1);
+			vreg *arg = R(o->p1);
 			if (arg) {
 				Arm64Reg r0 = GET_REG(arg);
 				if (r0 != X0) {
