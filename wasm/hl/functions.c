@@ -26,7 +26,12 @@ String String_fromUCS2(vbyte*);
 String String_fromUTF8(vbyte*);
 String String___add__(String,String);
 void String_new(String,String);
-void CanvasTest_main(void);
+#include <hl/natives.h>
+#include <_std/Date.h>
+void Date_new(Date,int,int,int,int,int,int);
+String Date_toString(Date);
+vbyte* Date___string(Date);
+void SimpleCanvasTest_main(void);
 #include <hl/types/ArrayAccess.h>
 vdynamic* hl_types_ArrayAccess_getDyn(hl__types__ArrayAccess,int);
 void hl_types_ArrayAccess_setDyn(hl__types__ArrayAccess,int,vdynamic*);
@@ -228,14 +233,6 @@ void hl_types_ArrayBytes_Int_sortDyn(hl__types__ArrayBytes_Int,vclosure*);
 void hl_types_ArrayBytes_Int___expand(hl__types__ArrayBytes_Int,int);
 String haxe_Log_formatOutput(vdynamic*,vvirtual*);
 void haxe_Log_trace(vdynamic*,vvirtual*);
-void CanvasTest_animationLoop(void);
-void CanvasTest_drawGrid(void);
-void CanvasTest_drawBouncingBall(void);
-void CanvasTest_drawRotatingCircles(void);
-void CanvasTest_drawShapes(void);
-void CanvasTest_drawTextOverlay(void);
-void CanvasTest_updatePhysics(void);
-vvirtual* CanvasTest_hueToRgb(double);
 #include <_std/WasmCanvas.h>
 void WasmCanvas_clear(WasmCanvas,int*,int*,int*);
 void WasmCanvas_fillRect(WasmCanvas,int,int,int,int,int*,int*,int*,int*);
@@ -243,17 +240,8 @@ void WasmCanvas_fillCircle(WasmCanvas,int,int,int,int*,int*,int*,int*);
 void WasmCanvas_drawLine(WasmCanvas,int,int,int,int,int*,int*,int*,int*,int*);
 void WasmCanvas_drawText(WasmCanvas,String,int,int,int*,int*,int*,int*,int*);
 void WasmCanvas_new(WasmCanvas,String);
-#include <haxe/Timer.h>
-void haxe_Timer_run(haxe__Timer);
-#include <sys/thread/_EventLoop/RegularEvent.h>
-void sys_thread__EventLoop_RegularEvent_new(sys__thread___EventLoop__RegularEvent,vclosure*,double,double);
-#include <sys/thread/EventLoop.h>
-sys__thread___EventLoop__RegularEvent sys_thread_EventLoop_repeat(sys__thread__EventLoop,vclosure*,int);
-void sys_thread_EventLoop_loop(sys__thread__EventLoop);
-#include <sys/thread/Lock.h>
-bool sys_thread_Lock_wait(sys__thread__Lock,vdynamic*);
-void sys_thread_Lock_release(sys__thread__Lock);
-void sys_thread_Lock_new(sys__thread__Lock);
+String Std_string(vdynamic*);
+vdynamic* Std___add__(vdynamic*,vdynamic*);
 hl__types__ArrayObj hl_types_ArrayObj_concat(hl__types__ArrayObj,hl__types__ArrayObj);
 String hl_types_ArrayObj_join(hl__types__ArrayObj,String);
 bool hl_types_ArrayObj_isArrayObj(hl__types__ArrayObj);
@@ -289,19 +277,6 @@ void hl_types_ArrayObj_insertDyn(hl__types__ArrayObj,int,vdynamic*);
 bool hl_types_ArrayObj_containsDyn(hl__types__ArrayObj,vdynamic*);
 bool hl_types_ArrayObj_removeDyn(hl__types__ArrayObj,vdynamic*);
 void hl_types_ArrayObj_sortDyn(hl__types__ArrayObj,vclosure*);
-void sys_thread_EventLoop_new(sys__thread__EventLoop);
-#include <sys/thread/_Thread/HaxeThread.h>
-sys__thread___Thread__HaxeThread sys_thread__Thread_HaxeThread_current(void);
-#include <hl/natives.h>
-void sys_thread__Thread_HaxeThread_new(sys__thread___Thread__HaxeThread,hl_thread*);
-void haxe_Timer_new(haxe__Timer,int);
-double Math_max(double,double);
-#include <_std/Date.h>
-void Date_new(Date,int,int,int,int,int,int);
-String Date_toString(Date);
-vbyte* Date___string(Date);
-String Std_string(vdynamic*);
-vdynamic* Std___add__(vdynamic*,vdynamic*);
 hl__types__ArrayObj hl_types_ArrayObj_alloc(varray*);
 #include <_std/StringBuf.h>
 void StringBuf_new(StringBuf);
@@ -322,26 +297,13 @@ void Type_register(vbyte*,hl__BaseType);
 #include <hl/Enum.h>
 hl__Enum Type_initEnum(hl_type*,hl_type*);
 void hl_types_ArrayObj_new(hl__types__ArrayObj);
-sys__thread___Thread__HaxeThread sys_thread__Thread_Thread_Impl__current(void);
-sys__thread__EventLoop sys_thread__Thread_Thread_Impl__get_events(sys__thread___Thread__HaxeThread);
 #include <haxe/Exception.h>
+void haxe_Exception_new(haxe__Exception,String,haxe__Exception,vdynamic*);
 String haxe_Exception_toString(haxe__Exception);
 String haxe_Exception_get_message(haxe__Exception);
 vbyte* haxe_Exception___string(haxe__Exception);
-void haxe_Exception_new(haxe__Exception,String,haxe__Exception,vdynamic*);
-#include <sys/thread/NoEventLoopException.h>
-void sys_thread_NoEventLoopException_new(sys__thread__NoEventLoopException,String,haxe__Exception);
-void sys_thread__Thread_Thread_Impl__processEvents(void);
-hl_mutex* sys_thread__Mutex_Mutex_Impl___new(void);
-double haxe_MainLoop_tick(void);
-bool haxe_MainLoop_hasEvents(void);
-void haxe_EntryPoint_run(void);
 varray* haxe_NativeStackTrace_exceptionStack(void);
-#include <haxe/MainEvent.h>
-void haxe_MainEvent_new(haxe__MainEvent,vclosure*,int);
-void haxe_MainLoop_sortEvents(void);
 void haxe_NativeStackTrace_saveStack(vdynamic*);
-void haxe_Timer_new__$1(haxe__Timer);
 void haxe_ds_ArraySort_sort(hl__types__ArrayDyn,vclosure*);
 void haxe_ds_ArraySort_rec(hl__types__ArrayDyn,vclosure*,int,int);
 void haxe_ds_ArraySort_swap(hl__types__ArrayDyn,int,int);
@@ -359,8 +321,6 @@ void haxe_iterators_ArrayIterator_new(haxe__iterators__ArrayIterator,hl__types__
 bool haxe_iterators_ArrayIterator_hasNext(haxe__iterators__ArrayIterator);
 vdynamic* haxe_iterators_ArrayIterator_next(haxe__iterators__ArrayIterator);
 void haxe_iterators_ArrayKeyValueIterator_new(haxe__iterators__ArrayKeyValueIterator,hl__types__ArrayDyn);
-bool haxe_iterators_ArrayKeyValueIterator_hasNext(haxe__iterators__ArrayKeyValueIterator);
-vvirtual* haxe_iterators_ArrayKeyValueIterator_next(haxe__iterators__ArrayKeyValueIterator);
 #include <hl/NativeArrayIterator_Dynamic.h>
 void hl_NativeArrayIterator_Dynamic_new(hl__NativeArrayIterator_Dynamic,varray*);
 bool hl_NativeArrayIterator_Dynamic_hasNext(hl__NativeArrayIterator_Dynamic);
@@ -426,6 +386,11 @@ extern hl_type t$fun_83f90f5;
 extern hl_type t$fun_07b476c;
 extern hl_type t$fun_2e5590a;
 extern hl_type t$fun_0b873a8;
+extern hl_type t$fun_7180aec;
+extern hl_type t$fun_fab01bb;
+extern hl_type t$fun_67512d4;
+extern hl_type t$fun_d420bf5;
+extern hl_type t$fun_9dd8397;
 extern hl_type t$fun_7b48b4f;
 extern hl_type t$fun_146041c;
 extern hl_type t$fun_50a2a57;
@@ -582,19 +547,23 @@ extern hl_type t$fun_e35f4e4;
 extern hl_type t$fun_4f1a968;
 extern hl_type t$fun_358bb66;
 extern hl_type t$fun_439b121;
-extern hl_type t$fun_856e989;
 extern hl_type t$fun_3c13a3e;
 extern hl_type t$fun_c448708;
 extern hl_type t$fun_a7429f1;
 extern hl_type t$fun_4db4ec3;
 extern hl_type t$fun_ade7f22;
 extern hl_type t$fun_1d1b5e6;
-extern hl_type t$fun_66d087d;
-extern hl_type t$fun_fcb90d4;
-extern hl_type t$fun_e8b394d;
-extern hl_type t$fun_efc5ba1;
-extern hl_type t$fun_3487374;
-extern hl_type t$fun_5222540;
+extern hl_type t$fun_b7334d8;
+extern hl_type t$fun_baf777f;
+extern hl_type t$fun_e7027a9;
+extern hl_type t$fun_1793431;
+extern hl_type t$fun_5daea2a;
+extern hl_type t$fun_1569556;
+extern hl_type t$fun_8bbbd94;
+extern hl_type t$fun_75c9212;
+extern hl_type t$fun_491b92b;
+extern hl_type t$fun_f903b64;
+extern hl_type t$fun_40779dc;
 extern hl_type t$fun_1bb5e7a;
 extern hl_type t$fun_c9b325a;
 extern hl_type t$fun_746eb80;
@@ -617,29 +586,6 @@ extern hl_type t$fun_2424150;
 extern hl_type t$fun_4c2da7d;
 extern hl_type t$fun_a163fa2;
 extern hl_type t$fun_294d21b;
-extern hl_type t$fun_f8bb930;
-extern hl_type t$fun_88c6b31;
-extern hl_type t$fun_a105048;
-extern hl_type t$fun_0baea77;
-extern hl_type t$fun_431ce16;
-extern hl_type t$fun_e5a2d8d;
-extern hl_type t$fun_fab01bb;
-extern hl_type t$fun_7180aec;
-extern hl_type t$fun_67512d4;
-extern hl_type t$fun_d420bf5;
-extern hl_type t$fun_9dd8397;
-extern hl_type t$fun_cb6e3d3;
-extern hl_type t$fun_b7334d8;
-extern hl_type t$fun_baf777f;
-extern hl_type t$fun_e7027a9;
-extern hl_type t$fun_1793431;
-extern hl_type t$fun_5daea2a;
-extern hl_type t$fun_1569556;
-extern hl_type t$fun_8bbbd94;
-extern hl_type t$fun_75c9212;
-extern hl_type t$fun_491b92b;
-extern hl_type t$fun_f903b64;
-extern hl_type t$fun_40779dc;
 extern hl_type t$fun_1c0676c;
 extern hl_type t$fun_b368daf;
 extern hl_type t$fun_abea61a;
@@ -658,7 +604,6 @@ extern hl_type t$fun_feba9b0;
 extern hl_type t$fun_0ecc9bc;
 extern hl_type t$fun_10aec05;
 extern hl_type t$fun_8186749;
-extern hl_type t$fun_d6303bc;
 extern hl_type t$fun_17f31ef;
 extern hl_type t$fun_95d9f81;
 extern hl_type t$fun_8f51bbf;
@@ -674,19 +619,12 @@ extern hl_type t$fun_0b11e48;
 extern hl_type t$fun_11da91e;
 extern hl_type t$fun_7b3f03c;
 extern hl_type t$fun_6ebcb3d;
-extern hl_type t$fun_0c1a63f;
+extern hl_type t$fun_0b37ebf;
 extern hl_type t$fun_81a6bcb;
 extern hl_type t$fun_3ec66f4;
-extern hl_type t$fun_0b37ebf;
-extern hl_type t$fun_ec58271;
-extern hl_type t$fun_d30dd47;
-extern hl_type t$fun_7ec7dd5;
-extern hl_type t$fun_6ec3a89;
-extern hl_type t$fun_02db654;
 extern hl_type t$fun_f1e0fdc;
 extern hl_type t$fun_06076c9;
 extern hl_type t$fun_10909c7;
-extern hl_type t$fun_a79e7d9;
 extern hl_type t$fun_8245b77;
 extern hl_type t$fun_95e430c;
 extern hl_type t$fun_8308e1f;
@@ -700,8 +638,6 @@ extern hl_type t$fun_a4d13ad;
 extern hl_type t$fun_078836b;
 extern hl_type t$fun_e705f35;
 extern hl_type t$fun_047f094;
-extern hl_type t$fun_8922f41;
-extern hl_type t$fun_5ce1b01;
 extern hl_type t$fun_62da9da;
 extern hl_type t$fun_0efb18a;
 extern hl_type t$fun_3aeb07d;
@@ -750,9 +686,6 @@ extern hl_type t$fun_0094d0c;
 extern hl_type t$fun_2795670;
 extern hl_type t$fun_bfddde4;
 extern hl_type t$fun_585f248;
-extern hl_type t$fun_df7a904;
-extern hl_type t$fun_9995233;
-extern hl_type t$fun_0bb4e24;
 extern hl_type t$hl_types_ArrayObj;
 extern hl_type t$_dyn;
 
@@ -778,7 +711,12 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	String_fromUTF8,\
 	String___add__,\
 	String_new,\
-	CanvasTest_main,\
+	hl_date_new,\
+	hl_date_to_string,\
+	Date_new,\
+	Date_toString,\
+	Date___string,\
+	SimpleCanvasTest_main,\
 	hl_types_ArrayAccess_getDyn,\
 	hl_types_ArrayAccess_setDyn,\
 	hl_types_ArrayAccess_blit,\
@@ -971,27 +909,25 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	hl_types_ArrayBytes_Int___expand,\
 	haxe_Log_formatOutput,\
 	haxe_Log_trace,\
-	CanvasTest_animationLoop,\
-	CanvasTest_drawGrid,\
-	CanvasTest_drawBouncingBall,\
-	CanvasTest_drawRotatingCircles,\
-	CanvasTest_drawShapes,\
-	CanvasTest_drawTextOverlay,\
-	CanvasTest_updatePhysics,\
-	CanvasTest_hueToRgb,\
 	WasmCanvas_clear,\
 	WasmCanvas_fillRect,\
 	WasmCanvas_fillCircle,\
 	WasmCanvas_drawLine,\
 	WasmCanvas_drawText,\
 	WasmCanvas_new,\
-	haxe_Timer_run,\
-	sys_thread__EventLoop_RegularEvent_new,\
-	sys_thread_EventLoop_repeat,\
-	sys_thread_EventLoop_loop,\
-	sys_thread_Lock_wait,\
-	sys_thread_Lock_release,\
-	sys_thread_Lock_new,\
+	hl_rnd_init_system,\
+	Std_string,\
+	hl_value_to_string,\
+	Std___add__,\
+	hl_itos,\
+	hl_alloc_bytes,\
+	hl_ucs2length,\
+	hl_utf8_to_utf16,\
+	hl_bytes_blit,\
+	hl_ucs2_upper,\
+	hl_ucs2_lower,\
+	hl_bytes_find,\
+	hl_bytes_compare,\
 	hl_types_ArrayObj_concat,\
 	hl_types_ArrayObj_join,\
 	hl_types_ArrayObj_isArrayObj,\
@@ -1027,34 +963,6 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	hl_types_ArrayObj_containsDyn,\
 	hl_types_ArrayObj_removeDyn,\
 	hl_types_ArrayObj_sortDyn,\
-	sys_thread_EventLoop_new,\
-	sys_thread__Thread_HaxeThread_current,\
-	sys_thread__Thread_HaxeThread_new,\
-	haxe_Timer_new,\
-	hl_math_floor,\
-	Math_max,\
-	hl_math_cos,\
-	hl_math_sin,\
-	hl_itos,\
-	hl_math_abs,\
-	hl_date_new,\
-	hl_date_to_string,\
-	Date_new,\
-	Date_toString,\
-	Date___string,\
-	hl_math_isnan,\
-	hl_rnd_init_system,\
-	Std_string,\
-	hl_value_to_string,\
-	Std___add__,\
-	hl_alloc_bytes,\
-	hl_ucs2length,\
-	hl_utf8_to_utf16,\
-	hl_bytes_blit,\
-	hl_ucs2_upper,\
-	hl_ucs2_lower,\
-	hl_bytes_find,\
-	hl_bytes_compare,\
 	hl_alloc_array,\
 	hl_types_ArrayObj_alloc,\
 	hl_utf16_to_utf8,\
@@ -1075,7 +983,6 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	Sys_println,\
 	hl_sys_print,\
 	hl_sys_utf8_path,\
-	hl_sys_time,\
 	Type_init,\
 	hl_hballoc,\
 	Type_initClass,\
@@ -1095,30 +1002,15 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	hl_canvas_fill_circle,\
 	hl_canvas_draw_line,\
 	hl_canvas_draw_text,\
-	sys_thread__Thread_Thread_Impl__current,\
-	sys_thread__Thread_Thread_Impl__get_events,\
+	haxe_Exception_new,\
 	haxe_Exception_toString,\
 	haxe_Exception_get_message,\
 	haxe_Exception___string,\
-	haxe_Exception_new,\
-	sys_thread_NoEventLoopException_new,\
-	sys_thread__Thread_Thread_Impl__processEvents,\
-	sys_thread__Mutex_Mutex_Impl___new,\
-	hl_mutex_alloc,\
-	hl_mutex_acquire,\
-	hl_mutex_release,\
-	haxe_MainLoop_tick,\
-	haxe_MainLoop_hasEvents,\
-	hl_thread_current,\
-	haxe_EntryPoint_run,\
 	haxe_NativeStackTrace_exceptionStack,\
 	hl_call_stack_raw,\
 	hl_array_blit,\
-	haxe_MainEvent_new,\
-	haxe_MainLoop_sortEvents,\
 	haxe_NativeStackTrace_saveStack,\
 	hl_exception_stack_raw,\
-	haxe_Timer_new__$1,\
 	haxe_ds_ArraySort_sort,\
 	haxe_ds_ArraySort_rec,\
 	haxe_ds_ArraySort_swap,\
@@ -1134,8 +1026,6 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	haxe_iterators_ArrayIterator_hasNext,\
 	haxe_iterators_ArrayIterator_next,\
 	haxe_iterators_ArrayKeyValueIterator_new,\
-	haxe_iterators_ArrayKeyValueIterator_hasNext,\
-	haxe_iterators_ArrayKeyValueIterator_next,\
 	hl_obj_get_field,\
 	hl_obj_set_field,\
 	hl_obj_has_field,\
@@ -1195,9 +1085,6 @@ void *hl_functions_ptrs[] = {String_toUpperCase,\
 	hl_types_ArrayObjIterator_new,\
 	hl_types_ArrayObjIterator_hasNext,\
 	hl_types_ArrayObjIterator_next,\
-	hl_lock_wait,\
-	hl_lock_release,\
-	hl_lock_create,\
 	fun$init};
 hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_0cf7b0f,\
@@ -1221,6 +1108,11 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_07b476c,\
 	&t$fun_2e5590a,\
 	&t$fun_0b873a8,\
+	&t$fun_7180aec,\
+	&t$fun_fab01bb,\
+	&t$fun_67512d4,\
+	&t$fun_d420bf5,\
+	&t$fun_9dd8397,\
 	&t$fun_7b48b4f,\
 	&t$fun_146041c,\
 	&t$fun_50a2a57,\
@@ -1414,27 +1306,25 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_bc56d4c,\
 	&t$fun_358bb66,\
 	&t$fun_439b121,\
-	&t$fun_7b48b4f,\
-	&t$fun_7b48b4f,\
-	&t$fun_7b48b4f,\
-	&t$fun_7b48b4f,\
-	&t$fun_7b48b4f,\
-	&t$fun_7b48b4f,\
-	&t$fun_7b48b4f,\
-	&t$fun_856e989,\
 	&t$fun_3c13a3e,\
 	&t$fun_c448708,\
 	&t$fun_a7429f1,\
 	&t$fun_4db4ec3,\
 	&t$fun_ade7f22,\
 	&t$fun_1d1b5e6,\
-	&t$fun_66d087d,\
-	&t$fun_fcb90d4,\
-	&t$fun_e8b394d,\
-	&t$fun_efc5ba1,\
-	&t$fun_3487374,\
-	&t$fun_5222540,\
-	&t$fun_5222540,\
+	&t$fun_b7334d8,\
+	&t$fun_baf777f,\
+	&t$fun_e7027a9,\
+	&t$fun_1793431,\
+	&t$fun_fab01bb,\
+	&t$fun_5daea2a,\
+	&t$fun_1569556,\
+	&t$fun_8bbbd94,\
+	&t$fun_75c9212,\
+	&t$fun_491b92b,\
+	&t$fun_491b92b,\
+	&t$fun_f903b64,\
+	&t$fun_40779dc,\
 	&t$fun_1bb5e7a,\
 	&t$fun_c9b325a,\
 	&t$fun_746eb80,\
@@ -1470,34 +1360,6 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_c0b2bf7,\
 	&t$fun_c0b2bf7,\
 	&t$fun_246e7a0,\
-	&t$fun_efc5ba1,\
-	&t$fun_f8bb930,\
-	&t$fun_88c6b31,\
-	&t$fun_a105048,\
-	&t$fun_0baea77,\
-	&t$fun_431ce16,\
-	&t$fun_e5a2d8d,\
-	&t$fun_e5a2d8d,\
-	&t$fun_fab01bb,\
-	&t$fun_e5a2d8d,\
-	&t$fun_7180aec,\
-	&t$fun_fab01bb,\
-	&t$fun_67512d4,\
-	&t$fun_d420bf5,\
-	&t$fun_9dd8397,\
-	&t$fun_cb6e3d3,\
-	&t$fun_b7334d8,\
-	&t$fun_baf777f,\
-	&t$fun_e7027a9,\
-	&t$fun_1793431,\
-	&t$fun_5daea2a,\
-	&t$fun_1569556,\
-	&t$fun_8bbbd94,\
-	&t$fun_75c9212,\
-	&t$fun_491b92b,\
-	&t$fun_491b92b,\
-	&t$fun_f903b64,\
-	&t$fun_40779dc,\
 	&t$fun_1c0676c,\
 	&t$fun_b368daf,\
 	&t$fun_8bbbd94,\
@@ -1518,7 +1380,6 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_0ecc9bc,\
 	&t$fun_10aec05,\
 	&t$fun_8186749,\
-	&t$fun_d6303bc,\
 	&t$fun_8186749,\
 	&t$fun_17f31ef,\
 	&t$fun_95d9f81,\
@@ -1538,30 +1399,15 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_11da91e,\
 	&t$fun_7b3f03c,\
 	&t$fun_6ebcb3d,\
-	&t$fun_f8bb930,\
-	&t$fun_0c1a63f,\
+	&t$fun_0b37ebf,\
 	&t$fun_81a6bcb,\
 	&t$fun_81a6bcb,\
 	&t$fun_3ec66f4,\
-	&t$fun_0b37ebf,\
-	&t$fun_ec58271,\
-	&t$fun_7b48b4f,\
-	&t$fun_d30dd47,\
-	&t$fun_7ec7dd5,\
-	&t$fun_6ec3a89,\
-	&t$fun_6ec3a89,\
-	&t$fun_d6303bc,\
-	&t$fun_8186749,\
-	&t$fun_02db654,\
-	&t$fun_7b48b4f,\
 	&t$fun_f1e0fdc,\
 	&t$fun_06076c9,\
 	&t$fun_10909c7,\
-	&t$fun_a79e7d9,\
-	&t$fun_7b48b4f,\
 	&t$fun_0ecc9bc,\
 	&t$fun_06076c9,\
-	&t$fun_66d087d,\
 	&t$fun_05c5c70,\
 	&t$fun_8245b77,\
 	&t$fun_95e430c,\
@@ -1577,8 +1423,6 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_078836b,\
 	&t$fun_e705f35,\
 	&t$fun_047f094,\
-	&t$fun_8922f41,\
-	&t$fun_5ce1b01,\
 	&t$fun_62da9da,\
 	&t$fun_0efb18a,\
 	&t$fun_3aeb07d,\
@@ -1638,9 +1482,6 @@ hl_type *hl_functions_types[] = {&t$fun_0cf7b0f,\
 	&t$fun_2795670,\
 	&t$fun_bfddde4,\
 	&t$fun_585f248,\
-	&t$fun_df7a904,\
-	&t$fun_9995233,\
-	&t$fun_0bb4e24,\
 	&t$fun_7b48b4f};
 
 hl__types__ArrayObj hl_types_ArrayObj_alloc(varray* r0) {
