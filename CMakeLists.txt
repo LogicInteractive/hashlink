@@ -165,11 +165,12 @@ if(IOS_PLATFORM)
     )
 endif()
 
-# WASM event loop integration
+# WASM event loop and HTTP integration
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND std_srcs
         src/std/event_loop_wasm.c
         src/std/mainloop_wasm.c
+        src/std/http_wasm.c
     )
 endif()
 
