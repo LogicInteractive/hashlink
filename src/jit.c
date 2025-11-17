@@ -5712,24 +5712,20 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case OStaticClosure:
-		{
-			// Allocate static closure and store pointer
+		// Allocate static closure and store pointer
+		if (dst) {
 			vclosure *c = alloc_static_closure(ctx, o->p2);
-			Arm64Reg rd = GET_REG(dst);
-			arm_load_imm64(ctx, rd, (uint64_t)c);
+			arm_load_imm64(ctx, X10, (uint64_t)c);
+			STORE_VREG(X10, dst);
 		}
 		break;
 
 	case OInstanceClosure:
-		{
-			// Create closure bound to an instance
-			// Call hl_alloc_closure_ptr(object, function_ptr, type)
-			Arm64Reg r_obj = GET_REG(rb);
-
+		// Create closure bound to an instance
+		// Call hl_alloc_closure_ptr(object, function_ptr, type)
+		if (dst && rb) {
 			// X0 = object
-			if (r_obj != X0) {
-				arm_mov_reg(ctx, X0, r_obj, true);
-			}
+			LOAD_VREG(X0, rb);
 
 			// X1 = function pointer (needs to be patched when JIT address is known)
 			// For now, mark it as needing patching via ctx->calls
@@ -5751,19 +5747,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_closure_ptr);
 			arm_blr(ctx, X9);
 
-			// Store result
-			Arm64Reg rd = GET_REG(dst);
-			if (rd != X0) {
-				arm_mov_reg(ctx, rd, X0, true);
-			}
+			// Store result (already in X0)
+			STORE_VREG(X0, dst);
 		}
 		break;
 
 	case OVirtualClosure:
-		{
-			// Create closure for virtual method
-			// Lookup virtual function pointer and call hl_alloc_closure_ptr
-			Arm64Reg r_obj = GET_REG(ra);
+		// Create closure for virtual method
+		// Lookup virtual function pointer and call hl_alloc_closure_ptr
+		if (dst && ra) {
 			hl_module *m = ctx->m;
 
 			// Find function type by looking up proto
@@ -5781,10 +5773,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				ot = ot->obj->super;
 			}
 
-			// X0 = object (save for later)
-			if (r_obj != X0) {
-				arm_mov_reg(ctx, X0, r_obj, true);
-			}
+			// X0 = object (load from stack)
+			LOAD_VREG(X0, ra);
 
 			// X1 = read function pointer from obj->type->vobj_proto[o->p3]
 			// LDR X1, [X0, #0]  - load type
@@ -5806,11 +5796,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_closure_ptr);
 			arm_blr(ctx, X9);
 
-			// Store result
-			Arm64Reg rd = GET_REG(dst);
-			if (rd != X0) {
-				arm_mov_reg(ctx, rd, X0, true);
-			}
+			// Store result (already in X0)
+			STORE_VREG(X0, dst);
 		}
 		break;
 
