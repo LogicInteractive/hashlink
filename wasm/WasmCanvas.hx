@@ -15,7 +15,9 @@ class WasmCanvas {
     // Clear canvas with RGB color
     public function clear(r:Int = 0, g:Int = 0, b:Int = 0) {
         #if hl_emscripten
+        trace('[CANVAS] clear() called: rgb($r,$g,$b)');
         _canvasClear(canvasId, r, g, b);
+        trace('[CANVAS] clear() returned');
         #end
     }
 
@@ -29,6 +31,7 @@ class WasmCanvas {
     // Fill circle with RGBA color
     public function fillCircle(x:Int, y:Int, radius:Int, r:Int = 255, g:Int = 255, b:Int = 255, a:Int = 255) {
         #if hl_emscripten
+        trace('[CANVAS] fillCircle() called: pos($x,$y) r:$radius');
         _canvasFillCircle(canvasId, x, y, radius, r, g, b, a);
         #end
     }

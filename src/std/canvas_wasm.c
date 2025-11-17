@@ -110,8 +110,11 @@ HL_PRIM void hl_canvas_init(vstring *canvasId) {
 }
 
 HL_PRIM void hl_canvas_clear(vstring *canvasId, int r, int g, int b) {
+    EM_ASM({ console.log('🔧 HL_PRIM hl_canvas_clear called'); });
     const char *id = vstring_to_utf8(canvasId);
+    EM_ASM({ console.log('🔧 String converted, calling js_canvas_clear...'); });
     js_canvas_clear(id, r, g, b);
+    EM_ASM({ console.log('🔧 js_canvas_clear returned'); });
 }
 
 HL_PRIM void hl_canvas_fill_rect(vstring *canvasId, int x, int y, int width, int height, int r, int g, int b, int a) {
@@ -120,6 +123,7 @@ HL_PRIM void hl_canvas_fill_rect(vstring *canvasId, int x, int y, int width, int
 }
 
 HL_PRIM void hl_canvas_fill_circle(vstring *canvasId, int x, int y, int radius, int r, int g, int b, int a) {
+    EM_ASM({ console.log('🔧 HL_PRIM hl_canvas_fill_circle called'); });
     const char *id = vstring_to_utf8(canvasId);
     js_canvas_fill_circle(id, x, y, radius, r, g, b, a);
 }
