@@ -83,19 +83,24 @@ GDB trace shows:
 - Called from: #1 hl_call_method
 ```
 
-**What We Know:**
+**What We Know (Updated 2025-11-18):**
 1. ✅ Entry point function address is valid (0x7ffff5c4e03c)
 2. ✅ Entry point closure is properly initialized
-3. ✅ hl_call_method receives correct closure
-4. ✅ hl_call_method calls hl_setup.static_call correctly
-5. ❌ Inside JIT code, a BLR X9 executes with X9=0
+3. ✅ Prologue correctly sets X29=SP (verified instruction: 0x910003FD)
+4. ✅ Arguments saved from X0-X7 to stack correctly
+5. ✅ Call patching works (verified BL instructions patched with correct offsets)
+6. ✅ OCallClosure closures do NOT have NULL fun pointers (NULL checks never trigger)
+7. ✅ No HFUN globals loaded (OGetGlobal only loads HOBJ/HABSTRACT types)
+8. ✅ All native function pointers valid at compile time
+9. ✅ Crash occurs after "OCall0 JIT function 240: will be patched"
+10. ❌ Inside JIT code, a BLR X9 executes with X9=0
 
 **What We Don't Know:**
-1. ❓ Which operation generates the failing BLR
-2. ❓ Why that operation loads NULL into X9
-3. ❓ Is it an OGetGlobal loading NULL?
-4. ❓ Is it an OCall with unpatched address?
-5. ❓ Is it an OCallMethod with invalid vtable?
+1. ❓ Which exact operation/instruction generates the failing BLR
+2. ❓ Why a vreg value loaded from memory is NULL at runtime
+3. ❓ Is it inside function 240 or during the call to it?
+4. ❓ Is there memory corruption or uninitialized data?
+5. ❓ Is the stack memory correctly allocated and accessible?
 
 ## Current Debugging Approach
 
