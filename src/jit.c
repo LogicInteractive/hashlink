@@ -5248,10 +5248,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				B32(0xd63f0120);
 
 				// Result in X0
-				Arm64Reg rd = GET_REG(dst);
-				if (rd != X0) {
-					arm_mov_reg(ctx, rd, X0, true);
-				}
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -5260,10 +5257,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		{
 			// Check if value is null, throw exception if so
 			if (dst) {
-				Arm64Reg rd = GET_REG(dst);
+				LOAD_VREG(X10, dst);
 
-				// CBNZ rd, not_null
-				int not_null = arm_do_cbnz(ctx, rd, true);
+				// CBNZ X10, not_null
+				int not_null = arm_do_cbnz(ctx, X10, true);
 
 				// Null case: call hl_null_access() or similar
 				// For now, just trigger error
@@ -5288,7 +5285,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// extra = array of (value, jump_offset) pairs
 
 			if (ra) {
-				Arm64Reg rn = GET_REG(ra);
+				LOAD_VREG(X10, ra);
 				int ncases = o->p2;
 				int default_offset = o->p3;
 				int *cases = (int*)o->extra;
@@ -5298,12 +5295,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					int case_value = cases[i * 2];
 					int case_offset = cases[i * 2 + 1];
 
-					// CMP rn, #case_value
+					// CMP X10, #case_value
 					if (case_value < 4096) {
-						arm_cmp_imm(ctx, rn, case_value, true);
+						arm_cmp_imm(ctx, X10, case_value, true);
 					} else {
 						arm_load_imm64(ctx, X9, case_value);
-						arm_subs_reg(ctx, (Arm64Reg)31, rn, X9, true);
+						arm_subs_reg(ctx, (Arm64Reg)31, X10, X9, true);
 					}
 
 					// B.EQ to case
@@ -5338,42 +5335,42 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				int offset = c->offsets[o->p2];
 				int size = hl_type_size(c->params[o->p2]);
 
-				Arm64Reg r_enum = GET_REG(dst);
-				Arm64Reg r_value = GET_REG(rb);
+				LOAD_VREG(X10, dst);   // enum pointer
+				LOAD_VREG(X11, rb);    // value to store
 
 				// Store value at offset in enum
 				// STR/STRB/STRH depending on size
 				if (size == 8) {
 					// 64-bit store
 					if (offset >= 0 && offset < 4096 * 8) {
-						arm_str_imm(ctx, r_value, r_enum, offset / 8, 3);
+						arm_str_imm(ctx, X11, X10, offset / 8, 3);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, r_value, r_enum, X9, 3);
+						arm_str_reg(ctx, X11, X10, X9, 3);
 					}
 				} else if (size == 4) {
 					// 32-bit store
 					if (offset >= 0 && offset < 4096 * 4) {
-						arm_str_imm(ctx, r_value, r_enum, offset / 4, 2);
+						arm_str_imm(ctx, X11, X10, offset / 4, 2);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, r_value, r_enum, X9, 2);
+						arm_str_reg(ctx, X11, X10, X9, 2);
 					}
 				} else if (size == 2) {
 					// 16-bit store
 					if (offset >= 0 && offset < 4096 * 2) {
-						arm_str_imm(ctx, r_value, r_enum, offset / 2, 1);
+						arm_str_imm(ctx, X11, X10, offset / 2, 1);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, r_value, r_enum, X9, 1);
+						arm_str_reg(ctx, X11, X10, X9, 1);
 					}
 				} else {
 					// 8-bit store
 					if (offset >= 0 && offset < 4096) {
-						arm_str_imm(ctx, r_value, r_enum, offset, 0);
+						arm_str_imm(ctx, X11, X10, offset, 0);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, r_value, r_enum, X9, 0);
+						arm_str_reg(ctx, X11, X10, X9, 0);
 					}
 				}
 			}
@@ -5391,12 +5388,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			bool float64 = (dst->t->kind == HF64);
 
 			if (float_val == 0.0) {
-				// Zero out FPU register using XOR equivalent
-				// For simplicity, just load zero bits
-				Arm64Reg rd = GET_REG(dst);
-				arm_movz(ctx, rd, 0, 0, true);
+				// Zero out register
+				arm_movz(ctx, X10, 0, 0, true);
 			} else {
-				// Load float bits as integer, then move to FPU
+				// Load float bits as integer
 				uint64_t bits;
 				if (float64) {
 					bits = *(uint64_t*)&float_val;
@@ -5405,54 +5400,61 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					bits = *(uint32_t*)&f32;
 				}
 
-				// Load bits into general register
-				Arm64Reg rd = GET_REG(dst);
-				arm_load_imm64(ctx, rd, bits);
+				// Load bits into X10
+				arm_load_imm64(ctx, X10, bits);
 			}
+			// Store to destination
+			STORE_VREG(X10, dst);
 		}
 		break;
 
 	case OToSFloat:
 		// Convert signed integer to float
 		if (dst && ra) {
-			Arm64Reg rn = GET_REG(ra);
 			bool int64 = (ra->t->kind == HI64);
 			bool float64 = (dst->t->kind == HF64);
 
+			// Load input integer
+			LOAD_VREG(X10, ra);
+
 			// Convert using SCVTF: integer register -> FPU register
-			arm_scvtf(ctx, V0, rn, int64, float64);
+			arm_scvtf(ctx, V0, X10, int64, float64);
 
 			// Move FPU result back to general register for storage
-			// (Since we don't have proper FPU register allocation yet)
-			Arm64Reg rd = GET_REG(dst);
 			// FMOV Xd, Dn  (move FPU to general register)
-			// Format: sf 0 011110 ftype 1 00 110 000000 Rn Rd
 			unsigned int sf = float64 ? 1 : 0;
 			unsigned int ftype = float64 ? 0x01 : 0x00;
 			unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
-			                    (0x06 << 16) | arm_reg(rd);
+			                    (0x06 << 16) | arm_reg(X10);
 			B32(inst);
+
+			// Store result
+			STORE_VREG(X10, dst);
 		}
 		break;
 
 	case OToUFloat:
 		// Convert unsigned integer to float
 		if (dst && ra) {
-			Arm64Reg rn = GET_REG(ra);
 			bool int64 = (ra->t->kind == HI64);
 			bool float64 = (dst->t->kind == HF64);
 
+			// Load input integer
+			LOAD_VREG(X10, ra);
+
 			// Convert using UCVTF: integer register -> FPU register
-			arm_ucvtf(ctx, V0, rn, int64, float64);
+			arm_ucvtf(ctx, V0, X10, int64, float64);
 
 			// Move FPU result back to general register for storage
-			Arm64Reg rd = GET_REG(dst);
 			// FMOV Xd, Vn
 			unsigned int sf = float64 ? 1 : 0;
 			unsigned int ftype = float64 ? 0x01 : 0x00;
 			unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
-			                    (0x06 << 16) | arm_reg(rd);
+			                    (0x06 << 16) | arm_reg(X10);
 			B32(inst);
+
+			// Store result
+			STORE_VREG(X10, dst);
 		}
 		break;
 
@@ -5496,57 +5498,44 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					break;
 				}
 
-				if (get_func) {
-					Arm64Reg rd = GET_REG(dst);
-					Arm64Reg r_obj = GET_REG(ra);
+			if (get_func) {
+				if (needs_type_arg) {
+					// Arguments: object (X0), hash (X1), type (X2)
+					LOAD_VREG(X0, ra);
 
-					if (needs_type_arg) {
-						// Arguments: object (X0), hash (X1), type (X2)
-						// Move object to X0
-						if (r_obj != X0) {
-							arm_mov_reg(ctx, X0, r_obj, true);
-						}
+					// Load hash into X1
+					arm_load_imm64(ctx, X1, hash);
 
-						// Load hash into X1
-						arm_load_imm64(ctx, X1, hash);
+					// Load type pointer into X2
+					arm_load_imm64(ctx, X2, (uint64_t)dst->t);
 
-						// Load type pointer into X2
-						arm_load_imm64(ctx, X2, (uint64_t)dst->t);
+					// Load function pointer into X9
+					arm_load_imm64(ctx, X9, (uint64_t)get_func);
 
-						// Load function pointer into X9
-						arm_load_imm64(ctx, X9, (uint64_t)get_func);
+					// BLR X9
+					B32(0xd63f0120);
 
-						// BLR X9
-						B32(0xd63f0120);
+					// Store result
+					STORE_VREG(X0, dst);
+				} else {
+					// Arguments: object (X0), hash (X1)
+					LOAD_VREG(X0, ra);
 
-						// Result in X0, move to destination if needed
-						if (rd != X0) {
-							arm_mov_reg(ctx, rd, X0, true);
-						}
-					} else {
-						// Arguments: object (X0), hash (X1)
-						// Move object to X0
-						if (r_obj != X0) {
-							arm_mov_reg(ctx, X0, r_obj, true);
-						}
+					// Load hash into X1
+					arm_load_imm64(ctx, X1, hash);
 
-						// Load hash into X1
-						arm_load_imm64(ctx, X1, hash);
+					// Load function pointer into X9
+					arm_load_imm64(ctx, X9, (uint64_t)get_func);
 
-						// Load function pointer into X9
-						arm_load_imm64(ctx, X9, (uint64_t)get_func);
+					// BLR X9
+					B32(0xd63f0120);
 
-						// BLR X9
-						B32(0xd63f0120);
-
-						// Result in X0, move to destination if needed
-						if (rd != X0) {
-							arm_mov_reg(ctx, rd, X0, true);
-						}
-					}
+					// Store result
+					STORE_VREG(X0, dst);
 				}
 			}
 		}
+			}
 		break;
 
 	case ODynSet:
@@ -5635,10 +5624,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (ra) {
 				vreg *arg = R(o->p1);
 				if (arg) {
-					Arm64Reg r0 = GET_REG(arg);
-					if (r0 != X0) {
-						arm_mov_reg(ctx, X0, r0, true);
-					}
+				LOAD_VREG(X0, arg);
 				}
 				// Load hl_throw address
 				arm_load_imm64(ctx, X9, (uint64_t)hl_throw);
@@ -5653,10 +5639,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Rethrow exception - call hl_rethrow(value)
 			vreg *arg = R(o->p1);
 			if (arg) {
-				Arm64Reg r0 = GET_REG(arg);
-				if (r0 != X0) {
-					arm_mov_reg(ctx, X0, r0, true);
-				}
+			LOAD_VREG(X0, arg);
 			}
 			// Load hl_rethrow address
 			arm_load_imm64(ctx, X9, (uint64_t)hl_rethrow);
@@ -5770,11 +5753,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OToVirtual:
 		// Convert to virtual - usually just a pointer copy
 		if (dst && ra) {
-			Arm64Reg rd = GET_REG(dst);
-			Arm64Reg rn = GET_REG(ra);
-			if (rd != rn) {
-				arm_mov_reg(ctx, rd, rn, true);
-			}
+			LOAD_VREG(X10, ra);
+			STORE_VREG(X10, dst);
 		}
 		break;
 
