@@ -3171,6 +3171,26 @@ static void make_dyn_cast( jit_ctx *ctx, vreg *dst, vreg *v ) {
 // Forward declarations for shared helper functions
 static double uint_to_double( unsigned int v );
 
+// Shared helper function for closure allocation
+static vclosure *alloc_static_closure( jit_ctx *ctx, int fid ) {
+	hl_module *m = ctx->m;
+	vclosure *c = hl_malloc(&m->ctx.alloc,sizeof(vclosure));
+	int fidx = m->functions_indexes[fid];
+	c->hasValue = 0;
+	if( fidx >= m->code->nfunctions ) {
+		// native
+		c->t = m->code->natives[fidx - m->code->nfunctions].t;
+		c->fun = m->functions_ptrs[fid];
+		c->value = NULL;
+	} else {
+		c->t = m->code->functions[fidx].type;
+		c->fun = (void*)(int_val)fid;
+		c->value = ctx->closure_list;
+		ctx->closure_list = c;
+	}
+	return c;
+}
+
 // Forward declarations for ARM64 encoders (defined later in file)
 #ifdef HL_JIT_ARM64
 static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
@@ -7164,10 +7184,106 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case OStaticClosure:
+		{
+			// Allocate static closure and store pointer
+			vclosure *c = alloc_static_closure(ctx, o->p2);
+			Arm64Reg rd = GET_REG(dst);
+			arm_load_imm64(ctx, rd, (uint64_t)c);
+		}
+		break;
+
 	case OInstanceClosure:
+		{
+			// Create closure bound to an instance
+			// Call hl_alloc_closure_ptr(object, function_ptr, type)
+			Arm64Reg r_obj = GET_REG(rb);
+
+			// X0 = object
+			if (r_obj != X0) {
+				arm_mov_reg(ctx, X0, r_obj, true);
+			}
+
+			// X1 = function pointer (needs to be patched when JIT address is known)
+			// For now, mark it as needing patching via ctx->calls
+			jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+			j->pos = ARM_BUF_POS();
+			j->target = o->p2;
+			j->next = ctx->calls;
+			ctx->calls = j;
+
+			// Placeholder - will be patched with actual JIT function address
+			arm_load_imm64(ctx, X1, 0xDEADBEEF);
+
+			// X2 = function type
+			hl_module *m = ctx->m;
+			hl_type *ftype = m->code->functions[m->functions_indexes[o->p2]].type;
+			arm_load_imm64(ctx, X2, (uint64_t)ftype);
+
+			// Call hl_alloc_closure_ptr
+			arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_closure_ptr);
+			arm_blr(ctx, X9);
+
+			// Store result
+			Arm64Reg rd = GET_REG(dst);
+			if (rd != X0) {
+				arm_mov_reg(ctx, rd, X0, true);
+			}
+		}
+		break;
+
 	case OVirtualClosure:
-		// Closures require closure allocation and binding
-		jit_error("Closure operations not yet implemented in ARM64");
+		{
+			// Create closure for virtual method
+			// Lookup virtual function pointer and call hl_alloc_closure_ptr
+			Arm64Reg r_obj = GET_REG(ra);
+			hl_module *m = ctx->m;
+
+			// Find function type by looking up proto
+			hl_type *t = NULL;
+			hl_type *ot = ra->t;
+			int i;
+			while (t == NULL) {
+				for (i = 0; i < ot->obj->nproto; i++) {
+					hl_obj_proto *pp = ot->obj->proto + i;
+					if (pp->pindex == o->p3) {
+						t = m->code->functions[m->functions_indexes[pp->findex]].type;
+						break;
+					}
+				}
+				ot = ot->obj->super;
+			}
+
+			// X0 = object (save for later)
+			if (r_obj != X0) {
+				arm_mov_reg(ctx, X0, r_obj, true);
+			}
+
+			// X1 = read function pointer from obj->type->vobj_proto[o->p3]
+			// LDR X1, [X0, #0]  - load type
+			arm_ldr_imm(ctx, X1, X0, 0, 3);
+			// LDR X1, [X1, #(HL_WSIZE*2)]  - load vobj_proto
+			arm_ldr_imm(ctx, X1, X1, 2, 3);
+			// LDR X1, [X1, #(HL_WSIZE*o->p3)]  - load function pointer
+			if (o->p3 < 4096) {
+				arm_ldr_imm(ctx, X1, X1, o->p3, 3);
+			} else {
+				arm_load_imm64(ctx, X9, o->p3 * HL_WSIZE);
+				arm_ldr_reg(ctx, X1, X1, X9, 3);
+			}
+
+			// X2 = function type
+			arm_load_imm64(ctx, X2, (uint64_t)t);
+
+			// Call hl_alloc_closure_ptr
+			arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_closure_ptr);
+			arm_blr(ctx, X9);
+
+			// Store result
+			Arm64Reg rd = GET_REG(dst);
+			if (rd != X0) {
+				arm_mov_reg(ctx, rd, X0, true);
+			}
+		}
 		break;
 
 	// =====================================================================
