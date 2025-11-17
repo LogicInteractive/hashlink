@@ -3677,6 +3677,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #		endif
 		// emit code
 		switch( o->op ) {
+#ifndef HL_JIT_ARM64
 		case OMov:
 		case OUnsafeCast:
 			op_mov(ctx, dst, ra);
@@ -3938,6 +3939,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			break;
 		case ORet:
 			op_ret(ctx, dst);
+#endif // !HL_JIT_ARM64
+
 			break;
 	
 	// ===== ARM64 Phase 1: Stack-Based Virtual Register System =====
@@ -4029,6 +4032,494 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				STORE_VREG(X10, dst);
 			}
 			break;
+	case ONeg:
+		// dst = -ra
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);
+			arm_neg(ctx, X10, X10, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case ONot:
+		// dst = !ra (boolean not)
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);
+			// XOR with 1 to flip boolean (0->1, 1->0)
+			arm_load_imm64(ctx, X11, 1);
+			arm_eor_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OInt:
+		// dst = integer constant
+		if (dst) {
+			arm_load_imm64(ctx, X10, m->code->ints[o->p2]);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OBool:
+		// dst = boolean constant (0 or 1)
+		if (dst) {
+			arm_load_imm64(ctx, X10, o->p2);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case ONull:
+		// dst = null pointer (0)
+		if (dst) {
+			arm_load_imm64(ctx, X10, 0);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OMov:
+	case OUnsafeCast:
+		// dst = ra (simple copy)
+		if (dst && ra && dst != ra) {
+			LOAD_VREG(X10, ra);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case ORet:
+		// Return from function
+		if (dst) {
+			// Load return value into X0
+			LOAD_VREG(X0, dst);
+		}
+		// Restore frame and return
+		arm_epilogue(ctx, ctx->totalRegsSize);
+		arm_ret(ctx, X30);
+		break;
+	case OCall0:
+		// Call function with 0 arguments
+		{
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
+				}
+			}
+		}
+		break;
+
+	case OCall1:
+		// Call function with 1 argument
+		{
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load argument into X0
+				vreg *arg = R(o->p3);
+				if (arg) {
+					LOAD_VREG(X0, arg);
+				}
+
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
+				}
+			}
+		}
+		break;
+
+	case OCall2:
+		// Call function with 2 arguments
+		{
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load arguments into X0, X1
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = R((int)(int_val)o->extra);
+
+				if (arg0) LOAD_VREG(X0, arg0);
+				if (arg1) LOAD_VREG(X1, arg1);
+
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
+				}
+			}
+		}
+		break;
+
+	case OCall3:
+		// Call function with 3 arguments
+		{
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load arguments into X0, X1, X2
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
+				vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
+
+				if (arg0) LOAD_VREG(X0, arg0);
+				if (arg1) LOAD_VREG(X1, arg1);
+				if (arg2) LOAD_VREG(X2, arg2);
+
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
+				}
+			}
+		}
+		break;
+
+	case OCall4:
+		// Call function with 4 arguments
+		{
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load arguments into X0, X1, X2, X3
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
+				vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
+				vreg *arg3 = o->extra ? R(o->extra[2]) : NULL;
+
+				if (arg0) LOAD_VREG(X0, arg0);
+				if (arg1) LOAD_VREG(X1, arg1);
+				if (arg2) LOAD_VREG(X2, arg2);
+				if (arg3) LOAD_VREG(X3, arg3);
+
+				// Load function pointer into X9
+				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
+				}
+			}
+		}
+		break;
+	case OJAlways:
+		// Unconditional jump
+		{
+			int jump = arm_do_jump(ctx);
+			register_jump(ctx, jump, (opCount + 1) + o->p1);
+		}
+		break;
+
+	case OLabel:
+		// Jump target label (no code generated)
+		break;
+
+	case OJTrue:
+	case OJNotNull:
+		// Jump if value is true/not null
+		if (dst) {
+			LOAD_VREG(X10, dst);
+			// CBNZ X10, target
+			int jump = arm_do_cbnz(ctx, X10, true);
+			register_jump(ctx, jump, (opCount + 1) + o->p2);
+		}
+		break;
+
+	case OJFalse:
+	case OJNull:
+		// Jump if value is false/null
+		if (dst) {
+			LOAD_VREG(X10, dst);
+			// CBZ X10, target
+			int jump = arm_do_cbz(ctx, X10, true);
+			register_jump(ctx, jump, (opCount + 1) + o->p2);
+		}
+		break;
+
+	case OJEq:
+		// Jump if ra == rb
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11 (implemented as SUBS XZR, X10, X11)
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.EQ target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_EQ);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJNotEq:
+		// Jump if ra != rb
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.NE target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_NE);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJSLt:
+		// Jump if ra < rb (signed)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.LT target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_LT);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJSGte:
+		// Jump if ra >= rb (signed)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.GE target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_GE);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJSGt:
+		// Jump if ra > rb (signed)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.GT target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_GT);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJSLte:
+		// Jump if ra <= rb (signed)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.LE target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_LE);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJULt:
+		// Jump if ra < rb (unsigned)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.LO target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_LO);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJUGte:
+		// Jump if ra >= rb (unsigned)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.HS target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_HS);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJNotLt:
+		// Jump if NOT (ra < rb) (same as ra >= rb signed)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.GE target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_GE);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+
+	case OJNotGte:
+		// Jump if NOT (ra >= rb) (same as ra < rb signed)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);
+			LOAD_VREG(X11, ra);
+			// CMP X10, X11
+			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// B.LT target
+			int jump = arm_do_jump_cond(ctx, ARM_CC_LT);
+			register_jump(ctx, jump, (opCount + 1) + o->p3);
+		}
+		break;
+	case OGetGlobal:
+		// dst = global[p2]
+		{
+			hl_module *m = ctx->m;
+			void *addr = m->globals_data + m->globals_indexes[o->p2];
+			// Load global address into X10
+			arm_load_imm64(ctx, X10, (uint64_t)addr);
+			// Load value from [X10]
+			arm_ldr_imm(ctx, X11, X10, 0, 3);  // 64-bit load
+			// Store to destination
+			if (dst) {
+				STORE_VREG(X11, dst);
+			}
+		}
+		break;
+
+	case OSetGlobal:
+		// global[p1] = ra
+		{
+			hl_module *m = ctx->m;
+			void *addr = m->globals_data + m->globals_indexes[o->p1];
+			if (ra) {
+				// Load value from source
+				LOAD_VREG(X10, ra);
+				// Load global address into X11
+				arm_load_imm64(ctx, X11, (uint64_t)addr);
+				// Store value to [X11]
+				arm_str_imm(ctx, X10, X11, 0, 3);  // 64-bit store
+			}
+		}
+		break;
+
+
+
+
+	case OSub:
+		// dst = ra - rb
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_sub_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OMul:
+		// dst = ra * rb
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_mul(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSDiv:
+		// dst = ra / rb (signed division)
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_sdiv(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OUDiv:
+		// dst = ra / rb (unsigned division)
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_udiv(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OAnd:
+		// dst = ra & rb
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_and_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OOr:
+		// dst = ra | rb
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_orr_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OXor:
+		// dst = ra ^ rb
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_eor_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OShl:
+		// dst = ra << rb
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_lsl_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSShr:
+		// dst = ra >> rb (arithmetic shift right)
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_asr_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OUShr:
+		// dst = ra >> rb (logical shift right)
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);
+			LOAD_VREG(X11, rb);
+			arm_lsr_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
 
 		case OAdd:
 			// dst = ra + rb
@@ -4037,1023 +4528,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				LOAD_VREG(X11, rb);
 				arm_add_reg(ctx, X10, X10, X11, true);
 				STORE_VREG(X10, dst);
-			}
-			break;
-		case OSub:
-			// dst = ra - rb
-			if (dst && ra && rb) {
-				LOAD_VREG(X10, ra);
-				LOAD_VREG(X11, rb);
-				arm_sub_reg(ctx, X10, X10, X11, true);
-				STORE_VREG(X10, dst);
-			}
-			break;
-		case OMul:
-			// dst = ra * rb
-			if (dst && ra && rb) {
-				LOAD_VREG(X10, ra);
-				LOAD_VREG(X11, rb);
-				arm_mul(ctx, X10, X10, X11, true);
-				STORE_VREG(X10, dst);
-			}
-			break;
-		case OSDiv:
-			// dst = ra / rb (signed division)
-			if (dst && ra && rb) {
-				LOAD_VREG(X10, ra);
-				LOAD_VREG(X11, rb);
-				arm_sdiv(ctx, X10, X10, X11, true);
-				STORE_VREG(X10, dst);
-			}
-			break;
-		case OUDiv:
-			// dst = ra / rb (unsigned division)
-			if (dst && ra && rb) {
-				LOAD_VREG(X10, ra);
-				LOAD_VREG(X11, rb);
-				arm_udiv(ctx, X10, X10, X11, true);
-				STORE_VREG(X10, dst);
-			}
-			break;
-		case OSMod:
-			// dst = ra % rb (signed modulo)
-			// ARM64 doesn't have MOD instruction, compute as: a % b = a - (a/b)*b
-			if (dst && ra && rb) {
-				Arm64Reg temp = X9;  // Use X9 as temporary
-				// temp = ra / rb (signed division)
-				arm_sdiv(ctx, temp, rn, rm, true);
-				// temp = temp * rb
-				arm_mul(ctx, temp, temp, rm, true);
-				// dst = ra - temp
-				arm_sub_reg(ctx, rd, rn, temp, true);
-			}
-			break;
-		case OUMod:
-			// dst = ra % rb (unsigned modulo)
-			if (dst && ra && rb) {
-				Arm64Reg temp = X9;  // Use X9 as temporary
-				// temp = ra / rb (unsigned division)
-				arm_udiv(ctx, temp, rn, rm, true);
-				// temp = temp * rb
-				arm_mul(ctx, temp, temp, rm, true);
-				// dst = ra - temp
-				arm_sub_reg(ctx, rd, rn, temp, true);
-			}
-			break;
-		case OAnd:
-			// dst = ra & rb (bitwise AND)
-			if (dst && ra && rb) {
-				arm_and_reg(ctx, rd, rn, rm, true);
-			}
-			break;
-		case OOr:
-			// dst = ra | rb (bitwise OR)
-			if (dst && ra && rb) {
-				arm_orr_reg(ctx, rd, rn, rm, true);
-			}
-			break;
-		case OXor:
-			// dst = ra ^ rb (bitwise XOR)
-			if (dst && ra && rb) {
-				arm_eor_reg(ctx, rd, rn, rm, true);
-			}
-			break;
-		case ONeg:
-			// dst = -ra (arithmetic negation)
-			if (dst && ra) {
-				arm_neg(ctx, rd, rn, true);
-			}
-			break;
-		case ONot:
-			// dst = !ra (logical NOT - XOR with 1)
-			if (dst && ra) {
-				arm_eor_reg(ctx, rd, rn, X1, true);  // Assuming X1 holds 1
-				// TODO: This needs fixing - should use immediate 1
-			}
-			break;
-		case OShl:
-			// dst = ra << rb (logical shift left)
-			if (dst && ra && rb) {
-				arm_lsl_reg(ctx, rd, rn, rm, true);
-			}
-			break;
-		case OUShr:
-			// dst = ra >> rb (logical/unsigned shift right)
-			if (dst && ra && rb) {
-				arm_lsr_reg(ctx, rd, rn, rm, true);
-			}
-			break;
-		case OSShr:
-			// dst = ra >> rb (arithmetic/signed shift right)
-			if (dst && ra && rb) {
-				arm_asr_reg(ctx, rd, rn, rm, true);
-			}
-			break;
-		case ONop:
-			// No operation
-			break;
-		case ONull:
-			// dst = null (set to 0)
-			if (dst) {
-				// XOR register with itself to set to 0
-				arm_eor_reg(ctx, rd, rd, rd, true);
-			}
-			break;
-
-		case OLabel:
-			// Label marks a jump target - no code generated
-			// Just ensure register state is cleared
-			// TODO: Implement discard_regs for ARM64 when needed
-			break;
-
-		case OIncr:
-			// Increment: dst = dst + 1
-			if (dst) {
-				Arm64Reg rd = GET_REG(dst);
-				// ADD rd, rd, #1
-				arm_add_imm(ctx, rd, rd, 1, true);
-			}
-			break;
-
-		case ODecr:
-			// Decrement: dst = dst - 1
-			if (dst) {
-				Arm64Reg rd = GET_REG(dst);
-				// SUB rd, rd, #1
-				arm_sub_imm(ctx, rd, rd, 1, true);
-			}
-			break;
-
-		case ORet:
-			// Return from function
-			if (dst) {
-				// Move return value to X0 if needed
-				Arm64Reg ret_reg = GET_REG(dst);
-				if (ret_reg != X0) {
-					arm_mov_reg(ctx, X0, ret_reg, true);
-				}
-			}
-			// Function epilogue - restore FP and LR, deallocate frame, return
-			// framesize was calculated during initialization: size + 16
-			arm_epilogue(ctx, ctx->totalRegsSize + 16);
-			arm_ret(ctx, X30);
-			break;
-
-		// =====================================================================
-		// Jump Operations
-		// =====================================================================
-
-		case OJAlways:
-			{
-				// Unconditional jump
-				int jump = arm_do_jump(ctx);
-				register_jump(ctx, jump, (opCount + 1) + o->p2);
-			}
-			break;
-
-		case OJTrue:
-		case OJFalse:
-			{
-				// Jump based on boolean/zero test
-				// dst contains the value to test
-				Arm64Reg rd = GET_REG(dst);
-				int jump;
-
-				if (o->op == OJTrue) {
-					// Jump if dst != 0 (true)
-					jump = arm_do_cbnz(ctx, rd, true);
-				} else {
-					// Jump if dst == 0 (false)
-					jump = arm_do_cbz(ctx, rd, true);
-				}
-
-				register_jump(ctx, jump, (opCount + 1) + o->p2);
-			}
-			break;
-
-		case OJNull:
-		case OJNotNull:
-			{
-				// Jump based on null test
-				// dst contains the pointer to test
-				Arm64Reg rd = GET_REG(dst);
-				int jump;
-
-				if (o->op == OJNull) {
-					// Jump if dst == NULL (0)
-					jump = arm_do_cbz(ctx, rd, true);
-				} else {
-					// Jump if dst != NULL
-					jump = arm_do_cbnz(ctx, rd, true);
-				}
-
-				register_jump(ctx, jump, (opCount + 1) + o->p2);
-			}
-			break;
-
-		// =====================================================================
-		// Comparison Jump Operations
-		// =====================================================================
-
-		case OJEq:
-		case OJNotEq:
-		case OJSLt:
-		case OJSGte:
-		case OJSLte:
-		case OJSGt:
-		case OJULt:
-		case OJUGte:
-		case OJNotLt:
-		case OJNotGte:
-			{
-				// Comparison jumps: compare dst and ra, then jump based on condition
-				// dst = first operand, ra = second operand
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				int jump;
-
-				// Perform comparison: CMP rd, rn (sets flags based on rd - rn)
-				arm_subs_reg(ctx, (Arm64Reg)31, rd, rn, true);  // SUBS XZR, rd, rn
-
-				// Emit conditional branch based on operation
-				Arm64Condition cond;
-				switch (o->op) {
-					case OJEq:    cond = ARM64_COND_EQ; break;  // Equal
-					case OJNotEq: cond = ARM64_COND_NE; break;  // Not Equal
-					case OJSLt:   cond = ARM64_COND_LT; break;  // Signed Less Than
-					case OJSGte:  cond = ARM64_COND_GE; break;  // Signed Greater or Equal
-					case OJSLte:  cond = ARM64_COND_LE; break;  // Signed Less or Equal
-					case OJSGt:   cond = ARM64_COND_GT; break;  // Signed Greater Than
-					case OJULt:   cond = ARM64_COND_LO; break;  // Unsigned Less Than
-					case OJUGte:  cond = ARM64_COND_HS; break;  // Unsigned Greater or Equal
-					case OJNotLt: cond = ARM64_COND_GE; break;  // Not Less Than (>=)
-					case OJNotGte:cond = ARM64_COND_LT; break;  // Not Greater or Equal (<)
-					default:      cond = ARM64_COND_AL; break;  // Always (shouldn't happen)
-				}
-
-				jump = arm_do_jump_cond(ctx, cond);
-				register_jump(ctx, jump, (opCount + 1) + o->p3);
-			}
-			break;
-
-		// =====================================================================
-		// Memory Operations
-		// =====================================================================
-
-		case OGetI8:
-			// dst = *(int8*)(ra + rb) - Load byte
-			if (dst && ra && rb) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);  // base address
-				Arm64Reg rm = GET_REG(rb);  // offset
-				// LDRB Wd, [Xn, Xm]
-				arm_ldr_reg(ctx, rd, rn, rm, 0);  // size=0 for byte
-			}
-			break;
-
-		case OGetI16:
-			// dst = *(int16*)(ra + rb) - Load half-word
-			if (dst && ra && rb) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				Arm64Reg rm = GET_REG(rb);
-				// LDRH Wd, [Xn, Xm]
-				arm_ldr_reg(ctx, rd, rn, rm, 1);  // size=1 for half-word
-			}
-			break;
-
-		case OGetMem:
-		case OGetArray:
-			// dst = *(int64*)(ra + rb) - Load 64-bit value
-			if (dst && ra && rb) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				Arm64Reg rm = GET_REG(rb);
-				// LDR Xd, [Xn, Xm]
-				arm_ldr_reg(ctx, rd, rn, rm, 3);  // size=3 for 64-bit
-			}
-			break;
-
-		case OSetI8:
-			// *(int8*)(dst + ra) = rb - Store byte
-			if (dst && ra && rb) {
-				Arm64Reg rt = GET_REG(rb);  // value to store
-				Arm64Reg rn = GET_REG(dst); // base address
-				Arm64Reg rm = GET_REG(ra);  // offset
-				// STRB Wt, [Xn, Xm]
-				arm_str_reg(ctx, rt, rn, rm, 0);  // size=0 for byte
-			}
-			break;
-
-		case OSetI16:
-			// *(int16*)(dst + ra) = rb - Store half-word
-			if (dst && ra && rb) {
-				Arm64Reg rt = GET_REG(rb);
-				Arm64Reg rn = GET_REG(dst);
-				Arm64Reg rm = GET_REG(ra);
-				// STRH Wt, [Xn, Xm]
-				arm_str_reg(ctx, rt, rn, rm, 1);  // size=1 for half-word
-			}
-			break;
-
-		case OSetMem:
-		case OSetArray:
-			// *(int64*)(dst + ra) = rb - Store 64-bit value
-			if (dst && ra && rb) {
-				Arm64Reg rt = GET_REG(rb);  // value to store
-				Arm64Reg rn = GET_REG(dst); // base address
-				Arm64Reg rm = GET_REG(ra);  // offset
-				// STR Xt, [Xn, Xm]
-				arm_str_reg(ctx, rt, rn, rm, 3);  // size=3 for 64-bit
-			}
-			break;
-
-		// =====================================================================
-		// Type and Object Operations
-		// =====================================================================
-
-		case OType:
-			// dst = &(code->types[p2]) - Load constant type pointer
-			if (dst) {
-				Arm64Reg rd = GET_REG(dst);
-				uint64_t type_ptr = (uint64_t)(m->code->types + o->p2);
-				arm_load_imm64(ctx, rd, type_ptr);
-			}
-			break;
-
-		case OArraySize:
-			// dst = array->size - Load array size from memory
-			// Size is stored at offset HL_WSIZE*2 for arrays, HL_WSIZE+4 for HABSTRACT
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);  // array pointer
-				int offset = (ra->t->kind == HABSTRACT) ? (HL_WSIZE + 4) : (HL_WSIZE * 2);
-
-				// LDR Wd, [Xn, #offset] (load 32-bit size)
-				if (offset < 4096) {
-					arm_ldr_imm(ctx, rd, rn, offset / 4, 2);  // size=2 for 32-bit
-				} else {
-					// Offset too large, use temp register
-					Arm64Reg temp = X9;
-					arm_load_imm64(ctx, temp, offset);
-					arm_ldr_reg(ctx, rd, rn, temp, 2);  // size=2 for 32-bit
-				}
-			}
-			break;
-
-		case ORef:
-			// dst = &ra - Get pointer to stack variable
-			// Calculate address as: X29 (FP) +/- stackPos
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				int stackPos = ra->stackPos;
-
-				if (stackPos < 0) {
-					// Local variable: address = FP - abs(stackPos)
-					// SUB Xd, X29, #abs(stackPos)
-					unsigned int offset = (unsigned int)(-stackPos);
-					if (offset <= 4095) {
-						arm_sub_imm(ctx, rd, X29, offset, true);
-					} else {
-						// Large offset: load into temp register
-						arm_load_imm64(ctx, X9, offset);
-						arm_sub_reg(ctx, rd, X29, X9, true);
-					}
-				} else {
-					// Stack argument: address = FP + stackPos
-					// ADD Xd, X29, #stackPos
-					unsigned int offset = (unsigned int)stackPos;
-					if (offset <= 4095) {
-						arm_add_imm(ctx, rd, X29, offset, true);
-					} else {
-						// Large offset: load into temp register
-						arm_load_imm64(ctx, X9, offset);
-						arm_add_reg(ctx, rd, X29, X9, true);
-					}
-				}
-			}
-			break;
-
-		case OUnref:
-			// dst = *ra - Dereference pointer
-			// dst = *(ra + 0)
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				// LDR Xd, [Xn, #0]
-				arm_ldr_imm(ctx, rd, rn, 0, 3);  // size=3 for 64-bit
-			}
-			break;
-
-		case OSetref:
-			// *dst = ra - Store through pointer
-			// *(dst + 0) = ra
-			if (dst && ra) {
-				Arm64Reg rt = GET_REG(ra);  // value to store
-				Arm64Reg rn = GET_REG(dst); // pointer
-				// STR Xt, [Xn, #0]
-				arm_str_imm(ctx, rt, rn, 0, 3);  // size=3 for 64-bit
-			}
-			break;
-
-		case OGetTID:
-			// dst = *(int*)(ra + 0) - Load type ID from object
-			// Type ID is stored at offset 0 in objects
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				// LDR Wd, [Xn, #0] (load 32-bit type ID)
-				arm_ldr_imm(ctx, rd, rn, 0, 2);  // size=2 for 32-bit
-			}
-			break;
-
-		// =====================================================================
-		// Field Access Operations
-		// =====================================================================
-
-		case OField:
-			// dst = object->field - Load field from object
-			// Field offset is in runtime object structure
-			if (dst && ra) {
-				if (ra->t->kind == HOBJ || ra->t->kind == HSTRUCT) {
-					hl_runtime_obj *rt = hl_get_obj_rt(ra->t);
-					int field_offset = rt->fields_indexes[o->p3];
-					Arm64Reg rd = GET_REG(dst);
-					Arm64Reg rn = GET_REG(ra);
-
-					// LDR Xd, [Xn, #offset]
-					if (field_offset >= 0 && field_offset < 4096 * 8) {
-						arm_ldr_imm(ctx, rd, rn, field_offset / 8, 3);  // size=3 for 64-bit
-					} else {
-						// Offset too large or negative, use temp register
-						Arm64Reg temp = X9;
-						arm_load_imm64(ctx, temp, field_offset);
-						arm_ldr_reg(ctx, rd, rn, temp, 3);
-					}
-				} else if (ra->t->kind == HVIRTUAL) {
-					// Virtual object field access
-					// Call appropriate hl_dyn_get* helper based on result type
-					Arm64Reg r_obj = GET_REG(ra);
-					int hashed_name = ra->t->virt->fields[o->p3].hashed_name;
-					void *helper_func = NULL;
-
-					// Select helper function based on destination type
-					switch (dst->t->kind) {
-					case HI32:
-					case HUI8:
-					case HUI16:
-					case HBOOL:
-						helper_func = hl_dyn_geti;
-						break;
-					case HI64:
-						helper_func = hl_dyn_geti64;
-						break;
-					case HF32:
-						helper_func = hl_dyn_getf;
-						break;
-					case HF64:
-						helper_func = hl_dyn_getd;
-						break;
-					default:
-						helper_func = hl_dyn_getp;
-						break;
-					}
-
-					// Set up arguments: X0 = object, X1 = hashed_name, X2 = type (for getp)
-					if (r_obj != X0) {
-						arm_mov_reg(ctx, X0, r_obj, true);
-					}
-
-					// X1 = hashed field name
-					arm_load_imm64(ctx, X1, hashed_name);
-
-					// X2 = destination type (only for getp)
-					if (helper_func == hl_dyn_getp) {
-						arm_load_imm64(ctx, X2, (uint64_t)dst->t);
-					}
-
-					// Call helper function
-					arm_load_imm64(ctx, X9, (uint64_t)helper_func);
-					arm_blr(ctx, X9);
-
-					// Store result
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				} else {
-					// Other unsupported types (HDYNOBJ, etc.)
-					jit_error("OField: unsupported type (not HOBJ/HSTRUCT/HVIRTUAL)");
-				}
-			}
-			break;
-
-		case OSetField:
-			// object->field = rb - Store field to object
-			if (dst && rb) {
-				if (dst->t->kind == HOBJ || dst->t->kind == HSTRUCT) {
-					hl_runtime_obj *rt = hl_get_obj_rt(dst->t);
-					int field_offset = rt->fields_indexes[o->p2];
-					Arm64Reg rt_reg = GET_REG(rb);  // value
-					Arm64Reg rn = GET_REG(dst);     // object
-
-					// STR Xt, [Xn, #offset]
-					if (field_offset >= 0 && field_offset < 4096 * 8) {
-						arm_str_imm(ctx, rt_reg, rn, field_offset / 8, 3);
-					} else {
-						Arm64Reg temp = X9;
-						arm_load_imm64(ctx, temp, field_offset);
-						arm_str_reg(ctx, rt_reg, rn, temp, 3);
-					}
-				} else if (dst->t->kind == HVIRTUAL) {
-					// Virtual object field set
-					// Call appropriate hl_dyn_set* helper based on value type
-					Arm64Reg r_obj = GET_REG(dst);
-					Arm64Reg r_value = GET_REG(rb);
-					int hashed_name = dst->t->virt->fields[o->p2].hashed_name;
-					void *helper_func = NULL;
-
-					// Select helper function based on value type
-					switch (rb->t->kind) {
-					case HI32:
-					case HUI8:
-					case HUI16:
-					case HBOOL:
-						helper_func = hl_dyn_seti;
-						break;
-					case HI64:
-						helper_func = hl_dyn_seti64;
-						break;
-					case HF32:
-						helper_func = hl_dyn_setf;
-						break;
-					case HF64:
-						helper_func = hl_dyn_setd;
-						break;
-					default:
-						helper_func = hl_dyn_setp;
-						break;
-					}
-
-					// Set up arguments: X0 = object, X1 = hashed_name, X2 = type/value, X3 = value (for seti)
-					if (r_obj != X0) {
-						arm_mov_reg(ctx, X0, r_obj, true);
-					}
-
-					// X1 = hashed field name
-					arm_load_imm64(ctx, X1, hashed_name);
-
-					if (helper_func == hl_dyn_seti) {
-						// seti needs: X2 = type, X3 = value
-						arm_load_imm64(ctx, X2, (uint64_t)rb->t);
-						if (r_value != X3) {
-							arm_mov_reg(ctx, X3, r_value, true);
-						}
-					} else if (helper_func == hl_dyn_setp) {
-						// setp needs: X2 = type, X3 = ptr
-						arm_load_imm64(ctx, X2, (uint64_t)rb->t);
-						if (r_value != X3) {
-							arm_mov_reg(ctx, X3, r_value, true);
-						}
-					} else {
-						// seti64/setf/setd need: X2 = value
-						if (r_value != X2) {
-							arm_mov_reg(ctx, X2, r_value, true);
-						}
-					}
-
-					// Call helper function
-					arm_load_imm64(ctx, X9, (uint64_t)helper_func);
-					arm_blr(ctx, X9);
-				} else {
-					jit_error("OSetField: unsupported type (not HOBJ/HSTRUCT/HVIRTUAL)");
-				}
-			}
-			break;
-
-		case OGetThis:
-			// dst = this->field - Load field from "this" (register 0)
-			{
-				vreg *r = R(0);  // "this" is always in register 0
-				if (r->t->kind == HOBJ || r->t->kind == HSTRUCT) {
-					hl_runtime_obj *rt = hl_get_obj_rt(r->t);
-					int field_offset = rt->fields_indexes[o->p2];
-					Arm64Reg rd = GET_REG(dst);
-					Arm64Reg r0 = GET_REG(r);
-
-					if (field_offset >= 0 && field_offset < 4096 * 8) {
-						arm_ldr_imm(ctx, rd, r0, field_offset / 8, 3);
-					} else {
-						Arm64Reg temp = X9;
-						arm_load_imm64(ctx, temp, field_offset);
-						arm_ldr_reg(ctx, rd, r0, temp, 3);
-					}
-				}
-			}
-			break;
-
-		case OSetThis:
-			// this->field = ra - Store field to "this"
-			{
-				vreg *r = R(0);
-				if (r->t->kind == HOBJ || r->t->kind == HSTRUCT) {
-					hl_runtime_obj *rt = hl_get_obj_rt(r->t);
-					int field_offset = rt->fields_indexes[o->p2];
-					Arm64Reg rt_reg = GET_REG(ra);  // value
-					Arm64Reg r0 = GET_REG(r);       // this
-
-					if (field_offset >= 0 && field_offset < 4096 * 8) {
-						arm_str_imm(ctx, rt_reg, r0, field_offset / 8, 3);
-					} else {
-						Arm64Reg temp = X9;
-						arm_load_imm64(ctx, temp, field_offset);
-						arm_str_reg(ctx, rt_reg, r0, temp, 3);
-					}
-				}
-			}
-			break;
-
-		// =====================================================================
-		// Type Conversions and Safety
-		// =====================================================================
-
-		case OToInt:
-			// Convert to integer
-			// For now: only handle integer sign-extension (I32 -> I64)
-			// Float conversions require FP registers - not yet implemented
-			if (ra == dst) break;  // Same register, no conversion needed
-
-			if (dst->t->kind == HI64 && ra->t->kind == HI32) {
-				// Sign-extend 32-bit to 64-bit
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				// SXTW Xd, Wn - sign extend word to doubleword
-				unsigned int inst = (0x93407C00) | (arm_reg(rn) << 5) | arm_reg(rd);
-				B32(inst);
-			} else if (ra->t->kind == HF64 || ra->t->kind == HF32) {
-				// Float-to-int conversion
-				Arm64Reg rn_gen = GET_REG(ra);
-				bool float64 = (ra->t->kind == HF64);
-				bool int64 = (dst->t->kind == HI64);
-
-				// Move general register containing float bits to FPU register
-				// FMOV Vn, Xn  (move general to FPU register)
-				unsigned int sf = float64 ? 1 : 0;
-				unsigned int ftype = float64 ? 0x01 : 0x00;
-				unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
-				                    (0x07 << 16) | (rn_gen << 5);
-				B32(inst);
-
-				// Convert using FCVTZS: FPU register -> integer register
-				Arm64Reg rd = GET_REG(dst);
-				arm_fcvtzs(ctx, rd, V0, int64, float64);
-			} else {
-				// Other cases: just move
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				arm_mov_reg(ctx, rd, rn, true);
-			}
-			break;
-
-		case OSafeCast:
-			// Safe dynamic cast - requires runtime type checking
-			// For now: just move the value (unsafe, but allows programs to run)
-			// TODO: Implement proper runtime type checking
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				arm_mov_reg(ctx, rd, rn, true);
-			}
-			break;
-
-	case OToDyn:
-		{
-			// Convert value to dynamic type
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-
-				if (ra->t->kind == HBOOL) {
-					// Call hl_alloc_dynbool(value)
-					if (rn != X0) {
-						arm_mov_reg(ctx, X0, rn, true);
-					}
-					arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_dynbool);
-					B32(0xd63f0120);  // BLR X9
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				} else if (hl_is_ptr(ra->t)) {
-					// For pointers, check if null
-					// CBZ rn, null_case
-					int null_jump = arm_do_cbz(ctx, rn, true);
-					
-					// Not null: call hl_alloc_dynamic(type)
-					arm_load_imm64(ctx, X0, (uint64_t)ra->t);
-					arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_dynamic);
-					B32(0xd63f0120);  // BLR X9
-					
-					// Store value into dynamic
-					Arm64Reg rn_temp = GET_REG(ra);
-					// STR rn, [X0, #HL_WSIZE] - offset scaled: 8 bytes / 8 = 1
-					arm_str_imm(ctx, rn_temp, X0, 1, 3);
-					
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-					
-					int end_jump = arm_do_jump(ctx);
-					
-					// null_case: return NULL
-					arm_patch_cbz(ctx, null_jump, ARM_BUF_POS());
-					arm_movz(ctx, rd, 0, 0, true);
-					
-					arm_patch_jump(ctx, end_jump);
-				} else {
-					// For other types (int, etc), call hl_alloc_dynamic
-					arm_load_imm64(ctx, X0, (uint64_t)ra->t);
-					arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_dynamic);
-					B32(0xd63f0120);  // BLR X9
-					
-					// Store value - offset scaled: 8 bytes / 8 = 1
-					Arm64Reg rn_temp = GET_REG(ra);
-					arm_str_imm(ctx, rn_temp, X0, 1, 3);
-					
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				}
-			}
-		}
-		break;
-
-		// =====================================================================
-		// Function Calls - Foundational Implementation
-		// =====================================================================
-		// NOTE: Full function call implementation requires:
-		// 1. Register allocation system (map vreg -> physical reg)
-		// 2. Stack frame management (save/restore FP, LR)
-		// 3. Argument marshalling (place args in X0-X7 or stack)
-		// 4. Call/return sequence with proper linking
-		//
-		// These are placeholder implementations. ARM64 calling convention (AAPCS64):
-		// - Args: X0-X7 (int/ptr), D0-D7 (float)
-		// - Return: X0 (int/ptr), D0 (float)
-		// - Caller-saved: X0-X15, X29-X30
-		// - Callee-saved: X19-X28
-		// =====================================================================
-
-	case OCall0:
-		{
-			// Call function with 0 arguments
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Load function pointer into X9
-				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				// BLR X9 - branch with link to register
-				B32(0xd63f0120);  // BLR X9
-				// Result is in X0
-				if (dst) {
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				}
-			}
-		}
-		break;
-
-	case OCall1:
-		{
-			// Call function with 1 argument
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Move argument to X0
-				vreg *arg0 = R(o->p3);
-				if (arg0) {
-					Arm64Reg r0 = GET_REG(arg0);
-					if (r0 != X0) {
-						arm_mov_reg(ctx, X0, r0, true);
-					}
-				}
-				// Load function pointer into X9
-				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				// BLR X9
-				B32(0xd63f0120);
-				// Result is in X0
-				if (dst) {
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				}
-			}
-		}
-		break;
-
-	case OCall2:
-		{
-			// Call function with 2 arguments
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Move arguments to X0, X1
-				vreg *arg0 = R(o->p3);
-				vreg *arg1 = R((int)(int_val)o->extra);
-				// Move arg1 first to avoid clobbering
-				if (arg1) {
-					Arm64Reg r1 = GET_REG(arg1);
-					if (r1 != X1) {
-						arm_mov_reg(ctx, X1, r1, true);
-					}
-				}
-				if (arg0) {
-					Arm64Reg r0 = GET_REG(arg0);
-					if (r0 != X0) {
-						arm_mov_reg(ctx, X0, r0, true);
-					}
-				}
-				// Load function pointer into X9
-				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				// BLR X9
-				B32(0xd63f0120);
-				// Result is in X0
-				if (dst) {
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				}
-			}
-		}
-		break;
-
-	case OCall3:
-		{
-			// Call function with 3 arguments
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Move arguments to X0, X1, X2
-				vreg *arg0 = R(o->p3);
-				vreg *arg1 = R(o->extra[0]);
-				vreg *arg2 = R(o->extra[1]);
-				// Move in reverse order to avoid clobbering
-				if (arg2) {
-					Arm64Reg r2 = GET_REG(arg2);
-					if (r2 != X2) {
-						arm_mov_reg(ctx, X2, r2, true);
-					}
-				}
-				if (arg1) {
-					Arm64Reg r1 = GET_REG(arg1);
-					if (r1 != X1) {
-						arm_mov_reg(ctx, X1, r1, true);
-					}
-				}
-				if (arg0) {
-					Arm64Reg r0 = GET_REG(arg0);
-					if (r0 != X0) {
-						arm_mov_reg(ctx, X0, r0, true);
-					}
-				}
-				// Load function pointer into X9
-				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				// BLR X9
-				B32(0xd63f0120);
-				// Result is in X0
-				if (dst) {
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				}
-			}
-		}
-		break;
-
-	case OCall4:
-		{
-			// Call function with 4 arguments
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Move arguments to X0, X1, X2, X3
-				vreg *arg0 = R(o->p3);
-				vreg *arg1 = R(o->extra[0]);
-				vreg *arg2 = R(o->extra[1]);
-				vreg *arg3 = R(o->extra[2]);
-				// Move in reverse order to avoid clobbering
-				if (arg3) {
-					Arm64Reg r3 = GET_REG(arg3);
-					if (r3 != X3) {
-						arm_mov_reg(ctx, X3, r3, true);
-					}
-				}
-				if (arg2) {
-					Arm64Reg r2 = GET_REG(arg2);
-					if (r2 != X2) {
-						arm_mov_reg(ctx, X2, r2, true);
-					}
-				}
-				if (arg1) {
-					Arm64Reg r1 = GET_REG(arg1);
-					if (r1 != X1) {
-						arm_mov_reg(ctx, X1, r1, true);
-					}
-				}
-				if (arg0) {
-					Arm64Reg r0 = GET_REG(arg0);
-					if (r0 != X0) {
-						arm_mov_reg(ctx, X0, r0, true);
-					}
-				}
-				// Load function pointer into X9
-				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				// BLR X9
-				B32(0xd63f0120);
-				// Result is in X0
-				if (dst) {
-					Arm64Reg rd = GET_REG(dst);
-					if (rd != X0) {
-						arm_mov_reg(ctx, rd, X0, true);
-					}
-				}
-			}
-		}
-		break;
-
-
-	// =====================================================================
-	// Global Variable Operations
-	// =====================================================================
-
-	case OGetGlobal:
-		{
-			// Load from globals_data + globals_indexes[p2]
-			void *addr = m->globals_data + m->globals_indexes[o->p2];
-			if (dst) {
-				Arm64Reg rd = GET_REG(dst);
-				// Load address into X9
-				arm_load_imm64(ctx, X9, (uint64_t)addr);
-				// LDR rd, [X9]
-				arm_ldr_imm(ctx, rd, X9, 0, 3);
-			}
-		}
-		break;
-
-	case OSetGlobal:
-		{
-			// Store to globals_data + globals_indexes[p1]
-			void *addr = m->globals_data + m->globals_indexes[o->p1];
-			if (ra) {
-				Arm64Reg rn = GET_REG(ra);
-				// Load address into X9
-				arm_load_imm64(ctx, X9, (uint64_t)addr);
-				// STR rn, [X9]
-				arm_str_imm(ctx, rn, X9, 0, 3);
-			}
-		}
-		break;
-
-	// =====================================================================
-	// Pointer/Reference Operations
-	// =====================================================================
-
-	case ORefData:
-		{
-			// Get pointer to data section of arrays/strings
-			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-
-				switch (ra->t->kind) {
-				case HARRAY:
-				case HVIRTUAL:
-					// For arrays: data is at offset 8 (after length field)
-					arm_add_imm(ctx, rd, rn, 8, true);
-					break;
-				case HBYTES:
-					// For bytes: data follows header
-					arm_add_imm(ctx, rd, rn, sizeof(vbyte*), true);
-					break;
-				default:
-					// Default: just copy the pointer
-					if (rd != rn) {
-						arm_mov_reg(ctx, rd, rn, true);
-					}
-					break;
-				}
-			}
-		}
-		break;
-
-	case ORefOffset:
-		{
-			// dst = ra + rb (pointer arithmetic)
-			if (dst && ra && rb) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-				Arm64Reg rm = GET_REG(rb);
-				// ADD rd, rn, rm
-				arm_add_reg(ctx, rd, rn, rm, true);
 			}
 		}
 		break;
