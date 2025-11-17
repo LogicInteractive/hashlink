@@ -60,9 +60,13 @@ args.txt
 /test_jump_operations
 /test_proof_arm64
 /test_arm64_jit
+/test_basic_jit
+/test_jit_call
 /test_memory_ops
 /test_modulo
 /test_field_access
 /test_conversions
 /test_exceptions
-/test_conversions
+/test_dynset
+/test_dynget
+/test_enumfield
