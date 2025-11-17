@@ -3207,6 +3207,7 @@ static void arm_and_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, boo
 static void arm_orr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_eor_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_lsl_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_lsl_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int shift, bool is64);
 static void arm_lsr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_asr_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_neg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, bool is64);
@@ -3566,15 +3567,17 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	hl_error("JIT compilation only supported on x86/x86-64 and ARM64");
 	return -1;
 #endif
-#ifdef HL_JIT_X86
+#if defined(HL_JIT_X86) || defined(HL_JIT_ARM64)
 	int i, size = 0, opCount;
 	int codePos = BUF_POS();
 	int nargs = f->type->fun->nargs;
 	unsigned short *debug16 = NULL;
 	int *debug32 = NULL;
+#ifdef HL_JIT_X86
 	call_regs cregs = {0};
 	hl_thread_info *tinf = NULL;
 	preg p;
+#endif
 	ctx->f = f;
 	ctx->allocOffset = 0;
 	if( f->nregs > ctx->maxRegs ) {
@@ -3606,6 +3609,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		r->stack.kind = RSTACK;
 	}
 	size = 0;
+#ifdef HL_JIT_X86
 	int argsSize = 0;
 	for(i=0;i<nargs;i++) {
 		vreg *r = R(i);
@@ -3621,6 +3625,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			r->stackPos = -size;
 		}
 	}
+#endif
 	for(i=nargs;i<f->nregs;i++) {
 		vreg *r = R(i);
 		size += r->size;
@@ -3638,8 +3643,13 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// make sure currentPos is > 0 before any reg allocations happen
 	// otherwise `alloc_reg` thinks that all registers are locked
 	ctx->currentPos = 1;
+#ifdef HL_JIT_X86
 	op_enter(ctx);
+#elif defined(HL_JIT_ARM64)
+	arm_prologue(ctx, ctx->totalRegsSize);
+#endif
 #	ifdef HL_64
+#	 ifdef HL_JIT_X86
 	{
 		// store in local var
 		for(i=0;i<nargs;i++) {
@@ -3653,6 +3663,24 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			r->current = p;
 		}
 	}
+#	 elif defined(HL_JIT_ARM64)
+	{
+		// Store function arguments from X0-X7 to stack
+		for(i=0;i<nargs && i<8;i++) {
+			vreg *r = R(i);
+			// ARM calling convention: args in X0-X7
+			Arm64Reg src_reg = (Arm64Reg)(X0 + i);
+			// Store to stack at r->stackPos
+			if (r->stackPos >= -255 && r->stackPos <= 0) {
+				arm_stur_imm(ctx, src_reg, X29, r->stackPos, 3);
+			} else {
+				arm_load_imm64(ctx, X9, r->stackPos);
+				arm_add_reg(ctx, X9, X29, X9, true);
+				arm_str_imm(ctx, src_reg, X9, 0, 3);
+			}
+		}
+	}
+#	 endif
 #	endif
 	if( ctx->m->code->hasdebug ) {
 		debug16 = (unsigned short*)malloc(sizeof(unsigned short) * (f->nops + 1));
@@ -3668,6 +3696,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		vreg *rb = R(o->p3);
 		ctx->currentPos = opCount + 1;
 		jit_buf(ctx);
+		ctx->opsPos[opCount + 1] = BUF_POS();
 #		ifdef JIT_DEBUG
 		if( opCount == 0 || f->ops[opCount-1].op != OAsm ) {
 			int uid = opCount + (f->findex<<16);
@@ -3854,6 +3883,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				store(ctx, dst, PEAX, true);
 			}
 			break;
+
 		case OToSFloat:
 			if( ra == dst ) break;
 			if (ra->t->kind == HI32 || ra->t->kind == HUI16 || ra->t->kind == HUI8) {
@@ -4089,16 +4119,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		}
 		break;
 
-	case OFloat:
-		// dst = float constant
-		if (dst && m->code->floats) {
-			// Load address of float from constant pool
-			double val = m->code->floats[o->p2];
-			// For now, store as immediate (works for simple cases)
-			arm_load_imm64(ctx, X10, *(uint64_t*)&val);
-			STORE_VREG(X10, dst);
-		}
-		break;
 
 	case OIncr:
 		// dst++
@@ -4119,6 +4139,92 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			STORE_VREG(X10, dst);
 		}
 		break;
+	case ORef:
+		// dst = &ra (take address of vreg)
+		// For stack-based system, this means calculating stack address
+		if (dst && ra) {
+			// Load frame pointer into X10
+			arm_mov_reg(ctx, X10, X29, true);
+			// Add stackPos offset
+			if (ra->stackPos != 0) {
+				if (ra->stackPos >= -4095 && ra->stackPos < 0) {
+					// Negative offset, use SUB
+					arm_sub_imm(ctx, X10, X10, -ra->stackPos, true);
+				} else if (ra->stackPos > 0 && ra->stackPos <= 4095) {
+					arm_add_imm(ctx, X10, X10, ra->stackPos, true);
+				} else {
+					// Large offset
+					arm_load_imm64(ctx, X11, ra->stackPos);
+					arm_add_reg(ctx, X10, X10, X11, true);
+				}
+			}
+			// X10 now holds the address
+			STORE_VREG(X10, dst);
+		}
+		break;
+	case OField:
+		// dst = ra->field (load field from object)
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load object pointer
+			// Field offset stored in o->p3
+			int field_offset = o->p3 * HL_WSIZE;
+			if (field_offset >= 0 && field_offset < 32768) {
+				arm_ldr_imm(ctx, X10, X10, field_offset / 8, 3);  // Scaled offset
+			} else {
+				arm_load_imm64(ctx, X11, field_offset);
+				arm_ldr_reg(ctx, X10, X10, X11, 3);
+			}
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSetField:
+		// dst->field = ra (store field to object)
+		if (dst && ra) {
+			LOAD_VREG(X10, dst);  // Load object pointer
+			LOAD_VREG(X11, ra);   // Load value to store
+			// Field offset stored in o->p2
+			int field_offset = o->p2 * HL_WSIZE;
+			if (field_offset >= 0 && field_offset < 32768) {
+				arm_str_imm(ctx, X11, X10, field_offset / 8, 3);  // Scaled offset
+			} else {
+				arm_load_imm64(ctx, X12, field_offset);
+				arm_str_reg(ctx, X11, X10, X12, 3);
+			}
+		}
+		break;
+
+	case OGetMem:
+		// dst = *(int64*)(ra + offset) - load 64-bit value
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load base pointer
+			int offset = o->p3 * HL_WSIZE;
+			if (offset >= 0 && offset < 32768) {
+				arm_ldr_imm(ctx, X10, X10, offset / 8, 3);  // 64-bit load
+			} else {
+				arm_load_imm64(ctx, X11, offset);
+				arm_ldr_reg(ctx, X10, X10, X11, 3);
+			}
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSetMem:
+		// *(int64*)(ra + offset) = rb
+		if (ra && rb) {
+			LOAD_VREG(X10, ra);  // Load base pointer
+			LOAD_VREG(X11, rb);  // Load value
+			int offset = o->p2 * HL_WSIZE;
+			if (offset >= 0 && offset < 32768) {
+				arm_str_imm(ctx, X11, X10, offset / 8, 3);  // 64-bit store
+			} else {
+				arm_load_imm64(ctx, X12, offset);
+				arm_str_reg(ctx, X11, X10, X12, 3);
+			}
+		}
+		break;
+
+
 
 
 	case OMov:
@@ -4309,7 +4415,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11 (implemented as SUBS XZR, X10, X11)
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.EQ target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_EQ);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_EQ);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4322,7 +4428,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.NE target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_NE);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_NE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4335,7 +4441,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.LT target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_LT);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_LT);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4348,7 +4454,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.GE target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_GE);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_GE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4361,7 +4467,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.GT target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_GT);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_GT);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4374,7 +4480,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.LE target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_LE);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_LE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4387,7 +4493,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.LO target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_LO);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_LO);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4400,7 +4506,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.HS target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_HS);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_HS);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4413,7 +4519,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.GE target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_GE);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_GE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4426,7 +4532,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// CMP X10, X11
 			arm_subs_reg(ctx, XZR, X10, X11, true);
 			// B.LT target
-			int jump = arm_do_jump_cond(ctx, ARM_CC_LT);
+			int jump = arm_do_jump_cond(ctx, ARM64_COND_LT);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
 		}
 		break;
@@ -4604,6 +4710,262 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 		}
 		break;
+	case OType:
+		// dst = pointer to type object
+		if (dst) {
+			hl_module *m = ctx->m;
+			hl_type *type = m->code->types + o->p2;
+			arm_load_imm64(ctx, X10, (uint64_t)type);
+			STORE_VREG(X10, dst);
+		}
+		break;
+	case OSafeCast:
+		// dst = (type)ra - for now just copy value
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);
+			STORE_VREG(X10, dst);
+		}
+		break;
+	case OGetTID:
+		// dst = ra->type->tid - get type ID from value
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);
+			// For now, assume type info is accessible
+			// This is a simplified implementation for Phase 1
+			// Real implementation needs to follow HL object layout
+			// For POC, just return 0 (unknown type)
+			arm_load_imm64(ctx, X10, 0);
+			STORE_VREG(X10, dst);
+		}
+		break;
+	case OToDyn:
+		// dst = (dynamic)ra - box value to dynamic
+		// For Phase 1 POC, just copy the pointer
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OGetI8:
+		// dst = *(int8*)(ra + offset)
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load base address
+			int offset = o->p3;
+			if (offset >= 0 && offset < 4096) {
+				// Use LDR with unsigned offset (size=0 for byte)
+				arm_ldr_imm(ctx, X11, X10, offset, 0);
+			} else {
+				// Large offset - use register
+				arm_load_imm64(ctx, X11, offset);
+				arm_ldr_reg(ctx, X11, X10, X11, 0);
+			}
+			STORE_VREG(X11, dst);
+		}
+		break;
+
+	case OGetI16:
+		// dst = *(int16*)(ra + offset)
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load base address
+			int offset = o->p3;
+			if (offset >= 0 && offset < 8192 && (offset % 2 == 0)) {
+				// Use LDR with scaled offset (size=1 for halfword)
+				arm_ldr_imm(ctx, X11, X10, offset / 2, 1);
+			} else {
+				arm_load_imm64(ctx, X11, offset);
+				arm_ldr_reg(ctx, X11, X10, X11, 1);
+			}
+			STORE_VREG(X11, dst);
+		}
+		break;
+
+	case OSetI8:
+		// *(int8*)(ra + offset) = rb
+		if (ra && rb) {
+			LOAD_VREG(X10, ra);  // Load base address
+			LOAD_VREG(X11, rb);  // Load value
+			int offset = o->p3;
+			if (offset >= 0 && offset < 4096) {
+				// Use STR with unsigned offset (size=0 for byte)
+				arm_str_imm(ctx, X11, X10, offset, 0);
+			} else {
+				// Large offset - use register
+				arm_load_imm64(ctx, X12, offset);
+				arm_add_reg(ctx, X10, X10, X12, true);
+				arm_str_imm(ctx, X11, X10, 0, 0);
+			}
+		}
+		break;
+
+	case OSetI16:
+		// *(int16*)(ra + offset) = rb
+		if (ra && rb) {
+			LOAD_VREG(X10, ra);  // Load base address
+			LOAD_VREG(X11, rb);  // Load value
+			int offset = o->p3;
+			if (offset >= 0 && offset < 8192 && (offset % 2 == 0)) {
+				// Use STR with scaled offset (size=1 for halfword)
+				arm_str_imm(ctx, X11, X10, offset / 2, 1);
+			} else {
+				arm_load_imm64(ctx, X12, offset);
+				arm_add_reg(ctx, X10, X10, X12, true);
+				arm_str_imm(ctx, X11, X10, 0, 1);
+			}
+		}
+		break;
+
+	case OGetThis:
+		// dst = this->field - load field from "this" object
+		// For Phase 1, treat similar to OField
+		// p2 is the field index
+		if (dst) {
+			// Get "this" pointer from vreg 0 (convention: this is first parameter)
+			LOAD_VREG(X10, R(0));
+			int field_offset = o->p2 * HL_WSIZE;
+			if (field_offset >= 0 && field_offset < 32768) {
+				arm_ldr_imm(ctx, X10, X10, field_offset / 8, 3);
+			} else {
+				arm_load_imm64(ctx, X11, field_offset);
+				arm_ldr_reg(ctx, X10, X10, X11, 3);
+			}
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSetThis:
+		// this->field = ra - store field to "this" object
+		// For Phase 1, treat similar to OSetField
+		if (ra) {
+			// Get "this" pointer from vreg 0
+			LOAD_VREG(X10, R(0));
+			LOAD_VREG(X11, ra);
+			int field_offset = o->p2 * HL_WSIZE;
+			if (field_offset >= 0 && field_offset < 32768) {
+				arm_str_imm(ctx, X11, X10, field_offset / 8, 3);
+			} else {
+				arm_load_imm64(ctx, X12, field_offset);
+				arm_str_reg(ctx, X11, X10, X12, 3);
+			}
+		}
+		break;
+
+	case OArraySize:
+		// dst = ra->size - get array length
+		// HashLink varray has size as first field
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load array pointer
+			// Load size (32-bit int at offset 0)
+			arm_ldr_imm(ctx, X10, X10, 0, 2);  // size=2 for 32-bit load
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OGetArray:
+		// dst = ra[rb] - array element access
+		// varray: { int size; void *ptr; }
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);  // Load array pointer
+			LOAD_VREG(X11, rb);  // Load index
+
+			// Load data pointer from offset 8 (after size field)
+			arm_ldr_imm(ctx, X10, X10, 1, 3);  // offset 8/8=1, size=3 for 64-bit
+
+			// Calculate element address: ptr + index * 8
+			arm_lsl_imm(ctx, X11, X11, 3, true);  // index << 3
+			arm_ldr_reg(ctx, X10, X10, X11, 3);
+
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSetArray:
+		// ra[rb] = rc - array element store
+		if (ra && rb) {
+			LOAD_VREG(X10, ra);  // Load array pointer
+			LOAD_VREG(X11, rb);  // Load index
+
+			vreg *rc = R(o->p3);
+			LOAD_VREG(X13, rc);  // Load value to store
+
+			// Load data pointer from offset 8
+			arm_ldr_imm(ctx, X10, X10, 1, 3);
+
+			// Calculate element address
+			arm_lsl_imm(ctx, X11, X11, 3, true);  // index << 3
+			arm_str_reg(ctx, X13, X10, X11, 3);
+		}
+		break;
+
+	case OSMod:
+		// dst = ra % rb (signed modulo)
+		// ARM64: a % b = a - (a / b) * b
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);  // a
+			LOAD_VREG(X11, rb);  // b
+
+			// X12 = a / b (signed)
+			arm_sdiv(ctx, X12, X10, X11, true);
+
+			// X12 = (a / b) * b
+			arm_mul(ctx, X12, X12, X11, true);
+
+			// X10 = a - (a / b) * b
+			arm_sub_reg(ctx, X10, X10, X12, true);
+
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OUMod:
+		// dst = ra % rb (unsigned modulo)
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);  // a
+			LOAD_VREG(X11, rb);  // b
+
+			// X12 = a / b (unsigned)
+			arm_udiv(ctx, X12, X10, X11, true);
+
+			// X12 = (a / b) * b
+			arm_mul(ctx, X12, X12, X11, true);
+
+			// X10 = a - (a / b) * b
+			arm_sub_reg(ctx, X10, X10, X12, true);
+
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OToInt:
+		// dst = (int)ra - convert to integer
+		// For Phase 1, just copy value (proper conversion in Phase 2)
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OUnref:
+		// dst = *ra - dereference pointer
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load pointer
+			arm_ldr_imm(ctx, X10, X10, 0, 3);  // Load value at pointer
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OSetref:
+		// *ra = rb - store via pointer
+		if (ra && rb) {
+			LOAD_VREG(X10, ra);  // Load pointer
+			LOAD_VREG(X11, rb);  // Load value
+			arm_str_imm(ctx, X11, X10, 0, 3);  // Store value at pointer
+		}
+		break;
+
+
+
+
 
 	// =====================================================================
 	// Advanced Call Operations
