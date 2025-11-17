@@ -4983,7 +4983,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					vreg *arg = R(o->extra[i]);
 					if (arg && i < 8) {
 						Arm64Reg target = (Arm64Reg)(X0 + i);
-					LOAD_VREG((Arm64Reg)(X0 + i), arg);
+						Arm64Reg source = GET_REG(arg);
+						if (source != target) {
+							arm_mov_reg(ctx, target, source, true);
+						}
 					}
 				}
 
@@ -4995,7 +4998,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Result in X0
 				if (dst) {
-			STORE_VREG(X0, dst);
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
 				}
 			}
 		}
