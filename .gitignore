@@ -88,3 +88,6 @@ args.txt
 !/wasm/canvastest.html
 !/wasm/canvastest.js
 !/wasm/canvastest.wasm
+!/wasm/simplecanvastest.html
+!/wasm/simplecanvastest.js
+!/wasm/simplecanvastest.wasm

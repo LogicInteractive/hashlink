@@ -43,14 +43,14 @@ static void mainloop_tick_callback() {
         return;
     }
 
-    vclosure *tick = get_mainloop_tick();
-    if (tick && tick->hasValue) {
-        // Call haxe.MainLoop.tick() which processes pending events
-        vdynamic *result = hl_dyn_call(tick, NULL, 0);
+    // Call haxe.MainLoop.tick() directly instead of through closure
+    // This avoids potential issues with closure setup
+    extern vdynamic* haxe_MainLoop_tick();
 
-        // tick() returns the wait time until next event
-        // We run at ~60fps regardless to catch all events promptly
-    }
+    vdynamic *result = haxe_MainLoop_tick();
+
+    // tick() returns the wait time until next event
+    // We run at ~60fps regardless to catch all events promptly
 }
 
 // Start the main loop automatically (called after main())
