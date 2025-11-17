@@ -3455,14 +3455,15 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 			fabs = ctx->static_functions[-c->target-1];
 		} else {
 			// Module function
-					fabs = m->functions_ptrs[c->target];
-					if( fabs == NULL ) {
+			fabs = m->functions_ptrs[c->target];
+			printf("[PATCH] Before conversion: fabs=%p, code=%p, c->pos=%d\n", fabs, code, c->pos);
+			if( fabs == NULL ) {
 				// TODO: Handle previous module lookups
-							return NULL;
-			} else {
-				// Convert relative offset to absolute address
-				fabs = (unsigned char*)code + (int)(int_val)fabs;
-						}
+				return NULL;
+			}
+			// At this point, fabs is a relative offset - convert to absolute
+			fabs = (unsigned char*)code + (int)(int_val)fabs;
+			printf("[PATCH] After conversion: fabs=%p\n", fabs);
 		}
 
 		// Patch the BL instruction
@@ -3473,7 +3474,8 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	
 		// Check if offset fits in 26 bits
 		if (offset < -(1<<25) || offset >= (1<<25)) {
-			printf("Target code too far to rebase\n");
+			printf("Target code too far to rebase: offset=%d, delta=%ld, target=%p, source=%p\n",
+			       offset, delta, fabs, (void*)(code + c->pos));
 			return NULL;
 		}
 
@@ -3650,7 +3652,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #ifdef HL_JIT_X86
 	op_enter(ctx);
 #elif defined(HL_JIT_ARM64)
-	arm_prologue(ctx, ctx->totalRegsSize);
+	// ARM64: totalRegsSize is space for locals; we need +16 for saved FP/LR
+	arm_prologue(ctx, ctx->totalRegsSize + 16);
 #endif
 #	ifdef HL_64
 #	 ifdef HL_JIT_X86
@@ -4246,25 +4249,34 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Load return value into X0
 			LOAD_VREG(X0, dst);
 		}
-		// Restore frame and return
-		arm_epilogue(ctx, ctx->totalRegsSize);
+		// Restore frame and return (must match prologue framesize)
+		arm_epilogue(ctx, ctx->totalRegsSize + 16);
 		arm_ret(ctx, X30);
 		break;
 	case OCall0:
 		// Call function with 0 arguments
 		{
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Load function pointer into X9
+			int fid = ctx->m->functions_indexes[o->p2];
+			bool isNative = fid >= ctx->m->code->nfunctions;
+
+			if (isNative) {
+				// Native function - use BLR with absolute address
+				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-
-				// BLR X9
 				arm_blr(ctx, X9);
+			} else {
+				// JIT function - use BL with staging for patching
+				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+				j->pos = BUF_POS();
+				j->target = o->p2;
+				j->next = ctx->calls;
+				ctx->calls = j;
+				B32(0x94000000);  // BL +0
+			}
 
-				// Store result if needed
-				if (dst && dst->t->kind != HVOID) {
-					STORE_VREG(X0, dst);
-				}
+			// Store result if needed
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -4272,108 +4284,121 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OCall1:
 		// Call function with 1 argument
 		{
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Load argument into X0
-				vreg *arg = R(o->p3);
-				if (arg) {
-					LOAD_VREG(X0, arg);
-				}
+			int fid = ctx->m->functions_indexes[o->p2];
+			bool isNative = fid >= ctx->m->code->nfunctions;
 
-				// Load function pointer into X9
+			// Load argument into X0
+			vreg *arg = R(o->p3);
+			if (arg) LOAD_VREG(X0, arg);
+
+			if (isNative) {
+				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-
-				// BLR X9
 				arm_blr(ctx, X9);
+			} else {
+				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+				j->pos = BUF_POS();
+				j->target = o->p2;
+				j->next = ctx->calls;
+				ctx->calls = j;
+				B32(0x94000000);  // BL +0
+			}
 
-				// Store result if needed
-				if (dst && dst->t->kind != HVOID) {
-					STORE_VREG(X0, dst);
-				}
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
 
 	case OCall2:
-		// Call function with 2 arguments
 		{
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Load arguments into X0, X1
-				vreg *arg0 = R(o->p3);
-				vreg *arg1 = R((int)(int_val)o->extra);
+			int fid = ctx->m->functions_indexes[o->p2];
+			bool isNative = fid >= ctx->m->code->nfunctions;
 
-				if (arg0) LOAD_VREG(X0, arg0);
-				if (arg1) LOAD_VREG(X1, arg1);
+			vreg *arg0 = R(o->p3);
+			vreg *arg1 = R((int)(int_val)o->extra);
+			if (arg0) LOAD_VREG(X0, arg0);
+			if (arg1) LOAD_VREG(X1, arg1);
 
-				// Load function pointer into X9
+			if (isNative) {
+				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-
-				// BLR X9
 				arm_blr(ctx, X9);
+			} else {
+				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+				j->pos = BUF_POS();
+				j->target = o->p2;
+				j->next = ctx->calls;
+				ctx->calls = j;
+				B32(0x94000000);
+			}
 
-				// Store result if needed
-				if (dst && dst->t->kind != HVOID) {
-					STORE_VREG(X0, dst);
-				}
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
 
 	case OCall3:
-		// Call function with 3 arguments
 		{
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Load arguments into X0, X1, X2
-				vreg *arg0 = R(o->p3);
-				vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
-				vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
+			int fid = ctx->m->functions_indexes[o->p2];
+			bool isNative = fid >= ctx->m->code->nfunctions;
 
-				if (arg0) LOAD_VREG(X0, arg0);
-				if (arg1) LOAD_VREG(X1, arg1);
-				if (arg2) LOAD_VREG(X2, arg2);
+			vreg *arg0 = R(o->p3);
+			vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
+			vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
+			if (arg0) LOAD_VREG(X0, arg0);
+			if (arg1) LOAD_VREG(X1, arg1);
+			if (arg2) LOAD_VREG(X2, arg2);
 
-				// Load function pointer into X9
+			if (isNative) {
+				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-
-				// BLR X9
 				arm_blr(ctx, X9);
+			} else {
+				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+				j->pos = BUF_POS();
+				j->target = o->p2;
+				j->next = ctx->calls;
+				ctx->calls = j;
+				B32(0x94000000);
+			}
 
-				// Store result if needed
-				if (dst && dst->t->kind != HVOID) {
-					STORE_VREG(X0, dst);
-				}
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
 
 	case OCall4:
-		// Call function with 4 arguments
 		{
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				// Load arguments into X0, X1, X2, X3
-				vreg *arg0 = R(o->p3);
-				vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
-				vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
-				vreg *arg3 = o->extra ? R(o->extra[2]) : NULL;
+			int fid = ctx->m->functions_indexes[o->p2];
+			bool isNative = fid >= ctx->m->code->nfunctions;
 
-				if (arg0) LOAD_VREG(X0, arg0);
-				if (arg1) LOAD_VREG(X1, arg1);
-				if (arg2) LOAD_VREG(X2, arg2);
-				if (arg3) LOAD_VREG(X3, arg3);
+			vreg *arg0 = R(o->p3);
+			vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
+			vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
+			vreg *arg3 = o->extra ? R(o->extra[2]) : NULL;
+			if (arg0) LOAD_VREG(X0, arg0);
+			if (arg1) LOAD_VREG(X1, arg1);
+			if (arg2) LOAD_VREG(X2, arg2);
+			if (arg3) LOAD_VREG(X3, arg3);
 
-				// Load function pointer into X9
+			if (isNative) {
+				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-
-				// BLR X9
 				arm_blr(ctx, X9);
+			} else {
+				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+				j->pos = BUF_POS();
+				j->target = o->p2;
+				j->next = ctx->calls;
+				ctx->calls = j;
+				B32(0x94000000);
+			}
 
-				// Store result if needed
-				if (dst && dst->t->kind != HVOID) {
-					STORE_VREG(X0, dst);
-				}
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -4977,30 +5002,33 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OCallN:
 		{
-			// Function call with N arguments (p3 = arg count, extra = arg registers)
-			void *fptr = m->functions_ptrs[o->p2];
-			if (fptr) {
-				int nargs = o->p3;
+			int fid = ctx->m->functions_indexes[o->p2];
+			bool isNative = fid >= ctx->m->code->nfunctions;
+			int nargs = o->p3;
 
-				// Move arguments to X0-X7 in reverse order
-				for (int i = nargs - 1; i >= 0; i--) {
-					vreg *arg = R(o->extra[i]);
-					if (arg && i < 8) {
-						Arm64Reg target = (Arm64Reg)(X0 + i);
+			// Move arguments to X0-X7
+			for (int i = 0; i < nargs && i < 8; i++) {
+				vreg *arg = R(o->extra[i]);
+				if (arg) {
 					LOAD_VREG((Arm64Reg)(X0 + i), arg);
-					}
 				}
+			}
 
-				// Load function pointer into X9
+			if (isNative) {
+				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
+				arm_blr(ctx, X9);
+			} else {
+				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+				j->pos = BUF_POS();
+				j->target = o->p2;
+				j->next = ctx->calls;
+				ctx->calls = j;
+				B32(0x94000000);
+			}
 
-				// BLR X9
-				B32(0xd63f0120);
-
-				// Result in X0
-				if (dst) {
-			STORE_VREG(X0, dst);
-				}
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -5985,25 +6013,31 @@ static void arm_mov_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64) {
 
 // MOVZ (move wide with zero): mov rd, #imm16 << (shift * 16)
 // Format: sf 10 100101 hw(2) imm16(16) Rd(5)
+// Bits 30-29 = 10 (opc for MOVZ), bits 28-23 = 100101
 static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64) {
 	if (!arm_fits_unsigned(imm16, 16) || shift > 3) {
 		ASSERT(2);
 		return;
 	}
 	unsigned int sf = is64 ? 1 : 0;
-	unsigned int inst = (sf << 31) | (0x52 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
+	// CRITICAL FIX: Must use 0xA5 (bits 30-23 = 10100101), not 0x52 (01010010)!
+	// 0x52 gives opc=01, but MOVZ requires opc=10
+	unsigned int inst = (sf << 31) | (0xA5 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
 	B32(inst);
 }
 
 // MOVK (move wide with keep): movk rd, #imm16 << (shift * 16)
 // Format: sf 11 100101 hw(2) imm16(16) Rd(5)
+// Bits 30-29 = 11 (opc for MOVK), bits 28-23 = 100101
 static void arm_movk(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64) {
 	if (!arm_fits_unsigned(imm16, 16) || shift > 3) {
 		ASSERT(3);
 		return;
 	}
 	unsigned int sf = is64 ? 1 : 0;
-	unsigned int inst = (sf << 31) | (0x72 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
+	// CRITICAL FIX: Must use 0xE5 (bits 30-23 = 11100101), not 0x72 (01110010)!
+	// 0x72 gives opc=01, but MOVK requires opc=11
+	unsigned int inst = (sf << 31) | (0xE5 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
 	B32(inst);
 }
 
@@ -6063,14 +6097,17 @@ static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 		ASSERT(5);
 		return;
 	}
-	unsigned int inst = (size << 30) | (0x39 << 24) | (imm12 << 10) |
+	// LDR (unsigned offset): size(2) 111001 01 imm12(12) Rn(5) Rt(5)
+	// Bit 22 must be set to 1 for LDR unsigned offset mode
+	unsigned int inst = (size << 30) | (0x39 << 24) | (1 << 22) | (imm12 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
 
 // STR (unsigned offset): Store register to [rn + (imm12 << size)]
-// Format: size(2) 111 0 00 imm12(12) Rn(5) Rt(5)
+// Format: size(2) 111 0 01 00 imm12(12) Rn(5) Rt(5)
 // NOTE: imm12 is already scaled (offset in units of access size)
+// Bits 23-22 = 00 for STR (different from LDR which uses 01)
 static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
 	if (!arm_fits_unsigned(imm12, 12)) {
 		ASSERT(6);
@@ -6821,15 +6858,23 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 		                    (0 << 15) | (30 << 10) | (31 << 5) | 29;
 		B32(inst);
 	} else {
-		// STP with pre-index (encoded differently than post-index)
-		unsigned int inst = (2 << 30) | (0x29 << 25) | (3 << 23) |  // pre-index mode
-		                    ((imm7 & 0x7F) << 15) | (30 << 10) |      // X30 (LR)
-		                    (31 << 5) | 29;                            // SP, X29 (FP)
+		// STP with pre-index
+		// Format: 10 1 01001 1 imm7(7) Rt2(5) Rn(5) Rt(5)
+		unsigned int inst = (2 << 30) |           // bits [31:30] = 10 (64-bit)
+		                    (1 << 29) |           // bit 29 = 1
+		                    (0b01001 << 24) |     // bits [28:24] = 01001
+		                    (1 << 23) |           // bit 23 = 1 (pre-index)
+		                    ((imm7 & 0x7F) << 15) | // imm7
+		                    (30 << 10) |          // Rt2 = X30 (LR)
+		                    (31 << 5) |           // Rn = 31 (SP)
+		                    29;                   // Rt = X29 (FP)
 		B32(inst);
 	}
 
 	// mov x29, sp (set frame pointer)
-	arm_mov_reg(ctx, X29, XZR, true);  // XZR represents SP in move context
+	// CRITICAL: Must use ADD, not ORR-based mov_reg!
+	// In ADD, reg 31 = SP; in ORR, reg 31 = XZR (zero)
+	arm_add_imm(ctx, X29, XZR, 0, true);  // ADD X29, SP, #0
 }
 
 // Generate function epilogue:
@@ -6863,9 +6908,15 @@ static void arm_epilogue(jit_ctx *ctx, int framesize) {
 		}
 	} else {
 		// LDP with post-index
-		unsigned int inst = (2 << 30) | (0x28 << 25) | (1 << 23) |  // post-index mode
-		                    ((imm7 & 0x7F) << 15) | (30 << 10) |      // X30 (LR)
-		                    (31 << 5) | 29;                            // SP, X29 (FP)
+		// Format: 10 1 01000 1 imm7(7) Rt2(5) Rn(5) Rt(5)
+		unsigned int inst = (2 << 30) |           // bits [31:30] = 10 (64-bit)
+		                    (1 << 29) |           // bit 29 = 1
+		                    (0b01000 << 24) |     // bits [28:24] = 01000
+		                    (1 << 23) |           // bit 23 = 1 (post-index)
+		                    ((imm7 & 0x7F) << 15) | // imm7
+		                    (30 << 10) |          // Rt2 = X30 (LR)
+		                    (31 << 5) |           // Rn = 31 (SP)
+		                    29;                   // Rt = X29 (FP)
 		B32(inst);
 	}
 
