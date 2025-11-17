@@ -28,42 +28,36 @@ class CanvasTest {
 
     static function animationLoop() {
         if (frame == 0) {
-            trace("🎬 Animation loop STARTED! First frame rendering...");
+            trace("🎬 Animation loop STARTED!");
         }
 
         frame++;
 
         try {
             // Clear canvas with dark background
-            trace("  → Clearing canvas...");
             canvas.clear(20, 20, 30);
 
             // Draw grid pattern
-            trace("  → Drawing grid...");
             drawGrid();
 
             // Draw bouncing ball
-            trace("  → Drawing ball...");
             drawBouncingBall();
 
             // Draw rotating circles
-            trace("  → Drawing circles...");
             drawRotatingCircles();
 
             // Draw decorative shapes
-            trace("  → Drawing shapes...");
             drawShapes();
 
             // Draw text overlay
-            trace("  → Drawing text...");
             drawTextOverlay();
 
             // Update physics
-            trace("  → Updating physics...");
             updatePhysics();
 
+            // Only log every 60 frames (once per second)
             if (frame % 60 == 0) {
-                trace("✓ Frame " + frame + " complete");
+                trace("✓ Frame " + frame + " - Animation running smoothly!");
             }
         } catch(e:Dynamic) {
             trace("❌ ERROR in animation loop: " + e);

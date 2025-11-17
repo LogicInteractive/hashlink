@@ -31,6 +31,13 @@ EM_JS(void, js_canvas_clear, (const char* canvasId, int r, int g, int b), {
         return;
     }
 
+    // Debug: log first 3 clears
+    if (!Module.clearCount) Module.clearCount = 0;
+    if (Module.clearCount < 3) {
+        console.log('🎨 js_canvas_clear called:', id, 'rgb(' + r + ',' + g + ',' + b + ')', 'ctx:', ctx);
+        Module.clearCount++;
+    }
+
     const canvas = Module.canvases[id];
     ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -48,7 +55,17 @@ EM_JS(void, js_canvas_fill_rect, (const char* canvasId, int x, int y, int width,
 EM_JS(void, js_canvas_fill_circle, (const char* canvasId, int x, int y, int radius, int r, int g, int b, int a), {
     const id = UTF8ToString(canvasId);
     const ctx = Module.canvasContexts ? Module.canvasContexts[id] : null;
-    if (!ctx) return;
+    if (!ctx) {
+        console.error('Canvas context not found for fillCircle:', id);
+        return;
+    }
+
+    // Debug: log first 3 circles
+    if (!Module.circleCount) Module.circleCount = 0;
+    if (Module.circleCount < 3) {
+        console.log('⭕ js_canvas_fill_circle called:', id, 'pos:(' + x + ',' + y + ') r:' + radius, 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')', 'ctx:', ctx);
+        Module.circleCount++;
+    }
 
     ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + (a / 255.0) + ')';
     ctx.beginPath();
