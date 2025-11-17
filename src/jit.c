@@ -1127,22 +1127,6 @@ static void patch_jump_to( jit_ctx *ctx, int p, int target ) {
 	}
 }
 
-static int stack_size( hl_type *t ) {
-	switch( t->kind ) {
-	case HUI8:
-	case HUI16:
-	case HBOOL:
-#	ifdef HL_64
-	case HI32:
-	case HF32:
-#	endif
-		return sizeof(int_val);
-	case HI64:
-	default:
-		return hl_type_size(t);
-	}
-}
-
 static int call_reg_index( int reg ) {
 #	ifdef HL_64
 	int i;
@@ -2239,16 +2223,6 @@ static int do_jump( jit_ctx *ctx, hl_op op, bool isFloat ) {
 	return j;
 }
 
-static void register_jump( jit_ctx *ctx, int pos, int target ) {
-	jlist *j = (jlist*)hl_malloc(&ctx->falloc, sizeof(jlist));
-	j->pos = pos;
-	j->target = target;
-	j->next = ctx->jumps;
-	ctx->jumps = j;
-	if( target != 0 && ctx->opsPos[target] == 0 )
-		ctx->opsPos[target] = -1;
-}
-
 #define HDYN_VALUE 8
 
 static void dyn_value_compare( jit_ctx *ctx, preg *a, preg *b, hl_type *t ) {
@@ -2989,21 +2963,12 @@ static int jit_build( jit_ctx *ctx, void (*fbuild)( jit_ctx *) ) {
 	return pos;
 }
 
-static void hl_jit_init_module( jit_ctx *ctx, hl_module *m ) {
-	int i;
-	ctx->m = m;
-	if( m->code->hasdebug ) {
-		ctx->debug = (hl_debug_infos*)malloc(sizeof(hl_debug_infos) * m->code->nfunctions);
-		memset(ctx->debug, -1, sizeof(hl_debug_infos) * m->code->nfunctions);
-	}
-	for(i=0;i<m->code->nfloats;i++) {
-		jit_buf(ctx);
-		*ctx->buf.d++ = m->code->floats[i];
-	}
-}
+// Forward declarations for x86-specific functions
+static void hl_jit_init_x86( jit_ctx *ctx );
+void *hl_jit_code_x86( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous );
+void hl_jit_patch_method_x86( void *old_fun, void **new_fun_table );
 
-void hl_jit_init( jit_ctx *ctx, hl_module *m ) {
-	hl_jit_init_module(ctx,m);
+static void hl_jit_init_x86( jit_ctx *ctx ) {
 	ctx->c2hl = jit_build(ctx, jit_c2hl);
 	ctx->hl2c = jit_build(ctx, jit_hl2c);
 #	ifdef JIT_CUSTOM_LONGJUMP
@@ -3012,11 +2977,6 @@ void hl_jit_init( jit_ctx *ctx, hl_module *m ) {
 	ctx->static_functions[0] = (void*)(int_val)jit_build(ctx,jit_null_access);
 	ctx->static_functions[1] = (void*)(int_val)jit_build(ctx,jit_assert);
 	ctx->static_functions[2] = (void*)(int_val)jit_build(ctx,jit_null_field_access);
-}
-
-void hl_jit_reset( jit_ctx *ctx, hl_module *m ) {
-	ctx->debug = NULL;
-	hl_jit_init_module(ctx,m);
 }
 
 static void *get_dyncast( hl_type *t ) {
@@ -3074,10 +3034,6 @@ static void *get_dynget( hl_type *t ) {
 	default:
 		return hl_dyn_getp;
 	}
-}
-
-static double uint_to_double( unsigned int v ) {
-	return v;
 }
 
 static vclosure *alloc_static_closure( jit_ctx *ctx, int fid ) {
@@ -3215,6 +3171,322 @@ static void arm_prologue(jit_ctx *ctx, int framesize);
 static void arm_epilogue(jit_ctx *ctx, int framesize);
 static int stack_size(hl_type *t);
 #endif
+
+// =====================================================================
+// Shared Framework Functions
+// =====================================================================
+
+static void hl_jit_init_module( jit_ctx *ctx, hl_module *m ) {
+	int i;
+	ctx->m = m;
+	if( m->code->hasdebug ) {
+		ctx->debug = (hl_debug_infos*)malloc(sizeof(hl_debug_infos) * m->code->nfunctions);
+		memset(ctx->debug, -1, sizeof(hl_debug_infos) * m->code->nfunctions);
+	}
+	for(i=0;i<m->code->nfloats;i++) {
+		jit_buf(ctx);
+		*ctx->buf.d++ = m->code->floats[i];
+	}
+}
+
+// =====================================================================
+// ARM64 Framework Helper Functions
+// =====================================================================
+#ifdef HL_JIT_ARM64
+
+// Helper function to call jit_fail for null access errors
+static void jit_fail( uchar *msg ) {
+	if( msg == NULL ) {
+		hl_debug_break();
+		msg = USTR("assert");
+	}
+	vdynamic *d = hl_alloc_dynamic(&hlt_bytes);
+	d->v.ptr = msg;
+	hl_throw(d);
+}
+
+// Null access error handler for ARM64
+// Generates code that calls jit_fail with "Null access" message
+static void jit_null_access_arm64( jit_ctx *ctx ) {
+	// ARM64 function prologue
+	arm_prologue(ctx, 16);
+
+	// Load message pointer into X0 (first argument)
+	// We use a literal string: "Null access"
+	int_val msg = (int_val)USTR("Null access");
+	arm_load_imm64(ctx, X0, (uint64_t)msg);
+
+	// Load jit_fail function address into X9
+	arm_load_imm64(ctx, X9, (uint64_t)jit_fail);
+
+	// Call jit_fail via BLR X9
+	arm_blr(ctx, X9);
+
+	// This should never return, but add epilogue for safety
+	arm_epilogue(ctx, 16);
+}
+
+// Helper for field-specific null access errors
+static void jit_null_fail( int fhash ) {
+	vbyte *field = hl_field_name(fhash);
+	hl_buffer *b = hl_alloc_buffer();
+	hl_buffer_str(b, USTR("Null access ."));
+	hl_buffer_str(b, (uchar*)field);
+	vdynamic *d = hl_alloc_dynamic(&hlt_bytes);
+	d->v.ptr = hl_buffer_content(b,NULL);
+	hl_throw(d);
+}
+
+// Null field access error handler for ARM64
+// Takes field hash as argument on stack
+static void jit_null_field_access_arm64( jit_ctx *ctx ) {
+	// ARM64 function prologue
+	// Frame needs space for saved FP/LR
+	arm_prologue(ctx, 16);
+
+	// Load field hash argument from stack
+	// First stack argument is at [FP + 16] (after saved FP/LR)
+	arm_ldr_imm(ctx, X0, X29, 16, 8);  // Load 64-bit value
+
+	// Load jit_null_fail function address into X9
+	arm_load_imm64(ctx, X9, (uint64_t)jit_null_fail);
+
+	// Call jit_null_fail via BLR X9
+	arm_blr(ctx, X9);
+
+	// This should never return
+	arm_epilogue(ctx, 16);
+}
+
+// Assert failure handler for ARM64
+static void jit_assert_arm64( jit_ctx *ctx ) {
+	// ARM64 function prologue
+	arm_prologue(ctx, 16);
+
+	// Call jit_fail with NULL argument (will use "assert" message)
+	arm_mov_reg(ctx, X0, XZR, true);  // X0 = 0 (NULL)
+
+	// Load jit_fail function address into X9
+	arm_load_imm64(ctx, X9, (uint64_t)jit_fail);
+
+	// Call jit_fail via BLR X9
+	arm_blr(ctx, X9);
+
+	// This should never return
+	arm_epilogue(ctx, 16);
+}
+
+// Helper to build ARM64 helper function and return its offset
+static int jit_build_arm64( jit_ctx *ctx, void (*fbuild)( jit_ctx *) ) {
+	int pos;
+	jit_buf(ctx);
+	// ARM64 requires 4-byte alignment for instructions
+	while (BUF_POS() & 3) {
+		*ctx->buf.b++ = 0;
+	}
+	pos = BUF_POS();
+	fbuild(ctx);
+	// Align after as well
+	while (BUF_POS() & 3) {
+		*ctx->buf.b++ = 0;
+	}
+	return pos;
+}
+
+// ARM64 JIT initialization
+void hl_jit_init_arm64( jit_ctx *ctx ) {
+	// Note: We don't need c2hl/hl2c trampolines for ARM64 yet
+	// as closures are not implemented. We just need error handlers.
+	ctx->static_functions[0] = (void*)(int_val)jit_build_arm64(ctx,jit_null_access_arm64);
+	ctx->static_functions[1] = (void*)(int_val)jit_build_arm64(ctx,jit_assert_arm64);
+	ctx->static_functions[2] = (void*)(int_val)jit_build_arm64(ctx,jit_null_field_access_arm64);
+}
+
+// ARM64 method patching
+// Patches an old method to redirect to a new method table
+void hl_jit_patch_method_arm64( void *old_fun, void **new_fun_table ) {
+	// ARM64 instruction sequence for patching:
+	// We need to load new_fun_table address and jump to it
+	// Using X9 as temporary register
+	//
+	// movz  x9, #imm16_0              ; bits 0-15
+	// movk  x9, #imm16_1, lsl #16    ; bits 16-31
+	// movk  x9, #imm16_2, lsl #32    ; bits 32-47
+	// movk  x9, #imm16_3, lsl #48    ; bits 48-63
+	// ldr   x9, [x9]                 ; load function pointer from table
+	// br    x9                       ; branch to function
+
+	unsigned char *b = (unsigned char*)old_fun;
+	unsigned long long addr = (unsigned long long)(int_val)new_fun_table;
+
+	// MOVZ X9, #imm16, LSL #0
+	unsigned int movz = (0xD2800000 | (9 << 0) | ((addr & 0xFFFF) << 5));
+	*(unsigned int*)b = movz; b += 4;
+
+	// MOVK X9, #imm16, LSL #16
+	unsigned int movk1 = (0xF2A00000 | (9 << 0) | (((addr >> 16) & 0xFFFF) << 5));
+	*(unsigned int*)b = movk1; b += 4;
+
+	// MOVK X9, #imm16, LSL #32
+	unsigned int movk2 = (0xF2C00000 | (9 << 0) | (((addr >> 32) & 0xFFFF) << 5));
+	*(unsigned int*)b = movk2; b += 4;
+
+	// MOVK X9, #imm16, LSL #48
+	unsigned int movk3 = (0xF2E00000 | (9 << 0) | (((addr >> 48) & 0xFFFF) << 5));
+	*(unsigned int*)b = movk3; b += 4;
+
+	// LDR X9, [X9] - Load 64-bit value from address in X9
+	// Format: 1 111 1001 01 imm12 Rn Rt (unsigned offset)
+	// With immediate offset 0
+	unsigned int ldr = (0xF9400000 | (9 << 5) | 9);
+	*(unsigned int*)b = ldr; b += 4;
+
+	// BR X9 - Branch to register
+	// Format: 1101 0110 0001 1111 0000 00 Rn 0 0000
+	unsigned int br = (0xD61F0000 | (9 << 5));
+	*(unsigned int*)b = br;
+}
+
+// ARM64 code generation
+void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug ) {
+	int size = BUF_POS();
+	unsigned char *code;
+
+	// Align to page boundary
+	if( size & 4095 ) size += 4096 - (size&4095);
+
+	// Allocate executable memory
+	code = (unsigned char*)hl_alloc_executable_memory(size);
+	if( code == NULL ) return NULL;
+
+	// Copy generated code to executable memory
+	memcpy(code,ctx->startBuf,BUF_POS());
+	*codesize = size;
+	*debug = ctx->debug;
+
+	// Convert static function offsets to absolute addresses
+	if( !ctx->static_function_offset ) {
+		int i;
+		ctx->static_function_offset = true;
+		for(i=0;i<(int)(sizeof(ctx->static_functions)/sizeof(void*));i++)
+			ctx->static_functions[i] = (void*)(code + (int)(int_val)ctx->static_functions[i]);
+	}
+
+	// Patch calls
+	jlist *c = ctx->calls;
+	while( c ) {
+		void *fabs;
+		if( c->target < 0 ) {
+			// Static function (error handlers)
+			fabs = ctx->static_functions[-c->target-1];
+		} else {
+			// Module function
+			fabs = m->functions_ptrs[c->target];
+			if( fabs == NULL ) {
+				// TODO: Handle previous module lookups
+				return NULL;
+			} else {
+				// Convert relative offset to absolute address
+				fabs = (unsigned char*)code + (int)(int_val)fabs;
+			}
+		}
+
+		// Patch the BL instruction
+		// BL encoding: imm26 is signed offset / 4
+		unsigned int *instr = (unsigned int*)(code + c->pos);
+		int_val delta = (int_val)fabs - (int_val)(code + c->pos);
+		int offset = (int)(delta / 4);  // Offset in instructions
+
+		// Check if offset fits in 26 bits
+		if (offset < -(1<<25) || offset >= (1<<25)) {
+			printf("Target code too far to rebase\n");
+			return NULL;
+		}
+
+		// Update BL instruction: keep top 6 bits, replace bottom 26 bits
+		*instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
+
+		c = c->next;
+	}
+
+	// Patch jumps (conditional branches, etc.)
+	jlist *j = ctx->jumps;
+	while( j ) {
+		int target_pos = ctx->opsPos[j->target];
+		if( target_pos == 0 && j->target != 0 ) {
+			printf("Invalid jump target\n");
+			return NULL;
+		}
+
+		// Call the appropriate ARM64 patch function
+		// Note: The instruction type was stored at the jump position
+		arm_patch_jump(ctx, j->pos);
+
+		j = j->next;
+	}
+
+	// Patch closures
+	vclosure *c_closure = ctx->closure_list;
+	while( c_closure ) {
+		vclosure *next;
+		int fid = (int)(int_val)c_closure->fun;
+		void *fabs = m->functions_ptrs[fid];
+		if( fabs == NULL ) {
+			printf("Closure function not found\n");
+			return NULL;
+		}
+		fabs = (unsigned char*)code + (int)(int_val)fabs;
+		c_closure->fun = fabs;
+		next = (vclosure*)c_closure->value;
+		c_closure->value = NULL;
+		c_closure = next;
+	}
+
+	return code;
+}
+
+#endif // HL_JIT_ARM64
+
+// =====================================================================
+// Shared JIT Initialization
+// =====================================================================
+
+void hl_jit_init( jit_ctx *ctx, hl_module *m ) {
+	hl_jit_init_module(ctx,m);
+#ifdef HL_JIT_X86
+	hl_jit_init_x86(ctx);
+#elif defined(HL_JIT_ARM64)
+	hl_jit_init_arm64(ctx);
+#else
+	hl_error("JIT not supported on this architecture");
+#endif
+}
+
+void hl_jit_reset( jit_ctx *ctx, hl_module *m ) {
+	ctx->debug = NULL;
+	hl_jit_init_module(ctx,m);
+}
+
+void hl_jit_patch_method( void *old_fun, void **new_fun_table ) {
+#ifdef HL_JIT_X86
+	hl_jit_patch_method_x86(old_fun, new_fun_table);
+#elif defined(HL_JIT_ARM64)
+	hl_jit_patch_method_arm64(old_fun, new_fun_table);
+#else
+	hl_error("JIT not supported on this architecture");
+#endif
+}
+
+void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous ) {
+#ifdef HL_JIT_X86
+	return hl_jit_code_x86(ctx, m, codesize, debug, previous);
+#elif defined(HL_JIT_ARM64)
+	return hl_jit_code_arm64(ctx, m, codesize, debug);
+#else
+	hl_error("JIT not supported on this architecture");
+	return NULL;
+#endif
+}
 
 int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #if !defined(HL_JIT_X86) && !defined(HL_JIT_ARM64)
@@ -6477,7 +6749,7 @@ static void *get_wrapper( hl_type *t ) {
 	return call_jit_hl2c;
 }
 
-void hl_jit_patch_method( void *old_fun, void **new_fun_table ) {
+void hl_jit_patch_method_x86( void *old_fun, void **new_fun_table ) {
 	// mov eax, addr
 	// jmp [eax]
 	unsigned char *b = (unsigned char*)old_fun;
@@ -6508,11 +6780,7 @@ static void missing_closure() {
 	hl_error("Missing static closure");
 }
 
-void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous ) {
-#ifndef HL_JIT_X86
-	hl_error("JIT code generation only supported on x86/x86-64 (ARM64 implementation in progress)");
-	return NULL;
-#else
+void *hl_jit_code_x86( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous ) {
 	jlist *c;
 	int size = BUF_POS();
 	unsigned char *code;
@@ -6601,7 +6869,6 @@ void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **d
 		}
 	}
 	return code;
-#endif // HL_JIT_X86
 }
 
 #endif // HL_JIT_X86
