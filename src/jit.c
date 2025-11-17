@@ -3490,8 +3490,13 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		}
 
 			// Update BL instruction: keep top 6 bits, replace bottom 26 bits
-		*instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
-	
+		unsigned int new_instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
+		*instr = new_instr;
+		printf("[PATCH]   Instruction AFTER patch: 0x%08x\n", *instr);
+
+		// Flush instruction cache for this specific instruction
+		__builtin___clear_cache((char*)instr, (char*)instr + 4);
+
 		c = c->next;
 		}
 
