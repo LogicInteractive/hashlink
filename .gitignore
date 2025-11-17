@@ -68,6 +68,10 @@ args.txt
 /wasm/_*/
 /wasm/hlc.json
 
+# But keep template files
+!/wasm/minimal_template.html
+!/wasm/canvas_template.html
+
 # But keep test executables for easy testing
 !/wasm/simple.html
 !/wasm/simple.js
@@ -81,3 +85,6 @@ args.txt
 !/wasm/fulltest.html
 !/wasm/fulltest.js
 !/wasm/fulltest.wasm
+!/wasm/canvastest.html
+!/wasm/canvastest.js
+!/wasm/canvastest.wasm
