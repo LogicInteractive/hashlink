@@ -44,7 +44,7 @@ run_test() {
     fi
     
     echo "Building $test_name..."
-    if ! $COMPILER -o $test_bin $test_file -static 2>&1 | grep -v "warning:"; then
+    if ! $COMPILER -o $test_bin $test_file -static 2>&1; then
         echo "  ✗ Build failed"
         return
     fi
@@ -80,9 +80,9 @@ run_test "test_memory_ops"
 run_test "test_modulo"
 run_test "test_field_access"
 run_test "test_conversions"
-
-# Latest tests (exceptions and conversions)
 run_test "test_exceptions"
+run_test "test_dynset"
+run_test "test_enumfield"
 
 echo "========================================"
 echo "Final Results"
