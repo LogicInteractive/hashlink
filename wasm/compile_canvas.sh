@@ -65,7 +65,8 @@ echo ""
 # Step 2: Compile C to WASM
 echo "Step 2: Compiling C to WASM..."
 echo "  Template: canvas_template.html"
-echo "  Optimization: -Oz"
+echo "  Optimization: -Oz, FILESYSTEM=0"
+echo "  JS size optimization: ~23KB (vs 72KB default)"
 
 emcc ${OUTPUT_NAME}.c -o ${OUTPUT_NAME}.html \
     --shell-file canvas_template.html \
@@ -74,8 +75,9 @@ emcc ${OUTPUT_NAME}.c -o ${OUTPUT_NAME}.html \
     -L"$BUILD_DIR/bin" \
     -lhl \
     -s WASM=1 \
+    -s FILESYSTEM=0 \
+    -s ENVIRONMENT=web \
     -s ALLOW_MEMORY_GROWTH=1 \
-    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
     -s EXPORTED_FUNCTIONS='["_main"]' \
     -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
     -Oz
