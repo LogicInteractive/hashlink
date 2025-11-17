@@ -3456,14 +3456,12 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		} else {
 			// Module function
 			fabs = m->functions_ptrs[c->target];
-			printf("[PATCH] Before conversion: fabs=%p, code=%p, c->pos=%d\n", fabs, code, c->pos);
 			if( fabs == NULL ) {
 				// TODO: Handle previous module lookups
 				return NULL;
 			}
 			// At this point, fabs is a relative offset - convert to absolute
 			fabs = (unsigned char*)code + (int)(int_val)fabs;
-			printf("[PATCH] After conversion: fabs=%p\n", fabs);
 		}
 
 		// Patch the BL instruction
@@ -3503,12 +3501,12 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// Patch closures
 	vclosure *c_closure = ctx->closure_list;
+	int closure_count = 0;
 	while( c_closure ) {
 		vclosure *next;
 		int fid = (int)(int_val)c_closure->fun;
 		void *fabs = m->functions_ptrs[fid];
 		if( fabs == NULL ) {
-			printf("Closure function not found\n");
 			return NULL;
 		}
 		fabs = (unsigned char*)code + (int)(int_val)fabs;
@@ -3516,6 +3514,7 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		next = (vclosure*)c_closure->value;
 		c_closure->value = NULL;
 		c_closure = next;
+		closure_count++;
 	}
 
 	// ARM64 CRITICAL: Flush instruction cache
@@ -4570,6 +4569,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		{
 			hl_module *m = ctx->m;
 			void *addr = m->globals_data + m->globals_indexes[o->p2];
+			hl_type *t = m->code->globals[o->p2];
+			if (t->kind == HFUN) {
+				printf("[OGetGlobal] Loading HFUN global %d from addr %p\n", o->p2, addr);
+			}
 			// Load global address into X10
 			arm_load_imm64(ctx, X10, (uint64_t)addr);
 			// Load value from [X10]
@@ -5186,16 +5189,19 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X11, ra);
 
 			// Load hasValue flag from closure (offset = HL_WSIZE * 2 = 16 bytes)
-			// For size=3 (64-bit), scaled offset = 16/8 = 2
-			arm_ldr_imm(ctx, X10, X11, 2, 3);
+			// hasValue is int (32-bit), so use size=2 (32-bit load)
+			// For size=2 (32-bit), scaled offset = 16/4 = 4
+			arm_ldr_imm(ctx, X10, X11, 4, 2);
 
 			// Test if hasValue is non-zero
 			// CBZ X10, no_value_case
 			int no_value_jump = arm_do_cbz(ctx, X10, true);
 
 			// HAS VALUE CASE: Load value and pass as first argument
-			// Load closure->value (offset = HL_WSIZE = 8 bytes, scaled = 1)
-			arm_ldr_imm(ctx, X0, X11, 1, 3);
+			// Load closure->value
+			// vclosure: { t(8), fun(8), hasValue(4), stackCount(4), value(8) }
+			// value is at offset 24 bytes = scaled offset 3
+			arm_ldr_imm(ctx, X0, X11, 3, 3);
 
 			// Set up remaining arguments (shift by 1)
 			for (i = 0; i < o->p3; i++) {
@@ -5211,8 +5217,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 
 			// Load function pointer and call
-			// closure->fun is at offset 0
-			arm_ldr_imm(ctx, X9, X11, 0, 3);
+			// CRITICAL FIX: closure->fun is at offset HL_WSIZE (8 bytes), not 0!
+			// vclosure struct: { t, fun, hasValue, value }
+			// Offset 0 = t, Offset 8 = fun
+			// For scaled offset with size=3 (64-bit): offset_bytes / 8 = 8 / 8 = 1
+			arm_ldr_imm(ctx, X9, X11, 1, 3);
 			arm_blr(ctx, X9);
 
 			// Jump over no-value case
@@ -5234,7 +5243,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 
 			// Load function pointer and call
-			arm_ldr_imm(ctx, X9, X11, 0, 3);
+			// closure->fun is at offset HL_WSIZE (scaled offset = 1)
+			arm_ldr_imm(ctx, X9, X11, 1, 3);
 			arm_blr(ctx, X9);
 
 			// Patch end jump

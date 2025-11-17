@@ -287,14 +287,19 @@ int main(int argc, pchar *argv[]) {
 	}
 	hl_setup.load_plugin = load_plugin;
 	hl_setup.resolve_type = resolve_type;
-	hl_code_free(ctx.code);
 	if( debug_port > 0 && !hl_module_debug(ctx.m,debug_port,debug_wait) ) {
 		fprintf(stderr,"Could not start debugger on port %d\n",debug_port);
 		return 4;
 	}
+	// Setup entry point BEFORE freeing ctx.code
 	cl.t = ctx.code->functions[ctx.m->functions_indexes[ctx.m->code->entrypoint]].type;
 	cl.fun = ctx.m->functions_ptrs[ctx.m->code->entrypoint];
 	cl.hasValue = 0;
+#ifdef HL_64
+	cl.stackCount = 0;
+#endif
+	cl.value = NULL;
+	hl_code_free(ctx.code);
 	setup_handler();
 	hl_profile_setup(profile_count);
 	ctx.ret = hl_dyn_call_safe(&cl,NULL,0,&isExc);
