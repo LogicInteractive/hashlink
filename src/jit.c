@@ -3975,6 +3975,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	#define GET_REG(vr) X10  // Always returns X10, shouldn't be used in Phase 1
 	
 
+
+#ifndef HL_JIT_ARM64
 	case OIncr:
 			{
 				if( IS_FLOAT(dst) ) {
@@ -4021,6 +4023,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			op64(ctx,MOV,alloc_cpu(ctx, dst, false),pconst64(&p,(int_val)hl_get_ustring(m->code,o->p2)));
 			store(ctx,dst,dst->current,false);
 			break;
+#endif // !HL_JIT_ARM64
+
 		case OBytes:
 			// dst = bytes constant pointer
 			if (dst) {
@@ -4075,6 +4079,47 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			STORE_VREG(X10, dst);
 		}
 		break;
+	case OString:
+		// dst = string constant pointer
+		if (dst) {
+			hl_module *m = ctx->m;
+			uchar *str = hl_get_ustring(m->code, o->p2);
+			arm_load_imm64(ctx, X10, (uint64_t)str);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OFloat:
+		// dst = float constant
+		if (dst && m->code->floats) {
+			// Load address of float from constant pool
+			double val = m->code->floats[o->p2];
+			// For now, store as immediate (works for simple cases)
+			arm_load_imm64(ctx, X10, *(uint64_t*)&val);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case OIncr:
+		// dst++
+		if (dst) {
+			LOAD_VREG(X10, dst);
+			arm_load_imm64(ctx, X11, 1);
+			arm_add_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case ODecr:
+		// dst--
+		if (dst) {
+			LOAD_VREG(X10, dst);
+			arm_load_imm64(ctx, X11, 1);
+			arm_sub_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
 
 	case OMov:
 	case OUnsafeCast:
@@ -4529,7 +4574,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_add_reg(ctx, X10, X10, X11, true);
 				STORE_VREG(X10, dst);
 			}
-		}
 		break;
 
 	case OGetType:
@@ -4537,24 +4581,26 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Get runtime type of a value
 			// If value is NULL, return &hlt_void, otherwise get type from object header
 			if (dst && ra) {
-				Arm64Reg rd = GET_REG(dst);
-				Arm64Reg rn = GET_REG(ra);
-
-				// CBZ rn, null_case
-				int null_jump = arm_do_cbz(ctx, rn, true);
-
+				LOAD_VREG(X10, ra);
+				
+				// CBZ X10, null_case
+				int null_jump = arm_do_cbz(ctx, X10, true);
+				
 				// Not null: load type from offset -HL_WSIZE (-8 bytes)
-				arm_ldur_imm(ctx, rd, rn, -HL_WSIZE, 3);
-
+				arm_ldur_imm(ctx, X10, X10, -HL_WSIZE, 3);
+				
 				// Jump over null case
 				int end_jump = arm_do_jump(ctx);
-
+				
 				// null_case: load &hlt_void
 				arm_patch_cbz(ctx, null_jump, ARM_BUF_POS());
-				arm_load_imm64(ctx, rd, (uint64_t)&hlt_void);
-
+				arm_load_imm64(ctx, X10, (uint64_t)&hlt_void);
+				
 				// end:
 				arm_patch_jump(ctx, end_jump);
+				
+				// Store result
+				STORE_VREG(X10, dst);
 			}
 		}
 		break;
