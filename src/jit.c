@@ -534,8 +534,47 @@ struct jit_ctx {
 	bool static_function_offset;
 };
 
+// =====================================================================
+// ARM64 Buffer Management Macros (shared with x86)
+// =====================================================================
+#define MAX_OP_SIZE				256
+#define BUF_POS()				((int)(ctx->buf.b - ctx->startBuf))
+
+static void jit_buf( jit_ctx *ctx ) {
+	if( BUF_POS() > ctx->bufSize - MAX_OP_SIZE ) {
+		int nsize = ctx->bufSize * 4 / 3;
+		unsigned char *nbuf;
+		int curpos;
+		if( nsize == 0 ) {
+			int i;
+			for(i=0;i<ctx->m->code->nfunctions;i++)
+				nsize += ctx->m->code->functions[i].nops;
+			nsize *= 4;
+		}
+		if( nsize < ctx->bufSize + MAX_OP_SIZE * 4 ) nsize = ctx->bufSize + MAX_OP_SIZE * 4;
+		curpos = BUF_POS();
+		nbuf = (unsigned char*)malloc(nsize);
+		if( nbuf == NULL ) {
+			hl_error("Out of memory allocating JIT buffer");
+			return;
+		}
+		if( ctx->startBuf ) {
+			memcpy(nbuf,ctx->startBuf,curpos);
+			free(ctx->startBuf);
+		}
+		ctx->startBuf = nbuf;
+		ctx->buf.b = nbuf + curpos;
+		ctx->bufSize = nsize;
+	}
+}
+
 #define jit_exit() { hl_debug_break(); exit(-1); }
 #define jit_error(msg)	_jit_error(ctx,msg,__LINE__)
+
+// ARM64 error handling function
+static void _jit_error( jit_ctx *ctx, const char *msg, int line ) {
+	hl_error("JIT error at line %d: %s", line, msg);
+}
 
 #ifndef HL_64
 #	ifdef HL_DEBUG
@@ -3166,6 +3205,7 @@ static void arm_patch_cbz(jit_ctx *ctx, int pos, int target);
 static void arm_patch_cbnz(jit_ctx *ctx, int pos, int target);
 static void arm_patch_jump(jit_ctx *ctx, int jump_pos);
 static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64);
+static void arm_blr(jit_ctx *ctx, Arm64Reg rn);
 static void register_jump(jit_ctx *ctx, int jump_pos, int target);
 static void arm_prologue(jit_ctx *ctx, int framesize);
 static void arm_epilogue(jit_ctx *ctx, int framesize);
@@ -6901,6 +6941,11 @@ static void arm_sub_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, boo
 	arm_alu_reg(ctx, 2, rd, rn, rm, is64);  // opc=2 for SUB
 }
 
+// SUBS (register): rd = rn - rm, and set flags
+static void arm_subs_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64) {
+	arm_alu_reg(ctx, 3, rd, rn, rm, is64);  // opc=3 for SUBS (SUB with flags)
+}
+
 // =====================================================================
 // ARM64 Instruction Encoders - Data Processing (Immediate)
 // =====================================================================
@@ -7643,6 +7688,16 @@ static void arm_patch_jump(jit_ctx *ctx, int jump_pos) {
 static void arm_patch_jump_to(jit_ctx *ctx, int jump_pos, int target_pos) {
 	if (jump_pos == 0) return;
 	arm_patch_branch(ctx, jump_pos, target_pos);
+}
+
+// Helper: Patch a CBZ to a specific target position
+static void arm_patch_cbz(jit_ctx *ctx, int jump_pos, int target_pos) {
+	arm_patch_jump_to(ctx, jump_pos, target_pos);
+}
+
+// Helper: Patch a CBNZ to a specific target position
+static void arm_patch_cbnz(jit_ctx *ctx, int jump_pos, int target_pos) {
+	arm_patch_jump_to(ctx, jump_pos, target_pos);
 }
 
 // =====================================================================
