@@ -33,26 +33,41 @@ class CanvasTest {
 
         frame++;
 
-        // Clear canvas with dark background
-        canvas.clear(20, 20, 30);
+        try {
+            // Clear canvas with dark background
+            trace("  → Clearing canvas...");
+            canvas.clear(20, 20, 30);
 
-        // Draw grid pattern
-        drawGrid();
+            // Draw grid pattern
+            trace("  → Drawing grid...");
+            drawGrid();
 
-        // Draw bouncing ball
-        drawBouncingBall();
+            // Draw bouncing ball
+            trace("  → Drawing ball...");
+            drawBouncingBall();
 
-        // Draw rotating circles
-        drawRotatingCircles();
+            // Draw rotating circles
+            trace("  → Drawing circles...");
+            drawRotatingCircles();
 
-        // Draw decorative shapes
-        drawShapes();
+            // Draw decorative shapes
+            trace("  → Drawing shapes...");
+            drawShapes();
 
-        // Draw text overlay
-        drawTextOverlay();
+            // Draw text overlay
+            trace("  → Drawing text...");
+            drawTextOverlay();
 
-        // Update physics
-        updatePhysics();
+            // Update physics
+            trace("  → Updating physics...");
+            updatePhysics();
+
+            if (frame % 60 == 0) {
+                trace("✓ Frame " + frame + " complete");
+            }
+        } catch(e:Dynamic) {
+            trace("❌ ERROR in animation loop: " + e);
+        }
     }
 
     static function drawGrid() {
