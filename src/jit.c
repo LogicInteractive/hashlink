@@ -5100,9 +5100,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (o->p2 < 4096) {
 				arm_ldr_imm(ctx, X9, X9, o->p2, 3);
 			} else {
-				Arm64Reg temp = X10;
-				arm_load_imm64(ctx, temp, o->p2 * HL_WSIZE);
-				arm_ldr_reg(ctx, X9, X9, temp, 3);
+				arm_load_imm64(ctx, X11, o->p2 * HL_WSIZE);
+				arm_ldr_reg(ctx, X9, X9, X11, 3);
 			}
 
 			// Call the method
@@ -5110,10 +5109,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Store result if needed
 			if (dst && dst->t->kind != HVOID) {
-				Arm64Reg rd = GET_REG(dst);
-				if (rd != X0) {
-					arm_mov_reg(ctx, rd, X0, true);
-				}
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -5134,17 +5130,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Store each argument into the array
 			for (i = 0; i < o->p3; i++) {
 				vreg *arg = R(o->extra[i]);
-				Arm64Reg src = GET_REG(arg);
-				// STR src, [SP, #(i * 8)]
-				arm_str_imm(ctx, src, SP, i, 3);  // Scaled offset
+				// Load from stack into X10, then store to args array
+				LOAD_VREG(X10, arg);
+				// STR X10, [SP, #(i * 8)]
+				arm_str_imm(ctx, X10, SP, i, 3);  // Scaled offset
 			}
 
 			// Set up call to hl_dyn_call(closure, args, nargs)
 			// X0 = closure
-			Arm64Reg r_closure = GET_REG(ra);
-			if (r_closure != X0) {
-				arm_mov_reg(ctx, X0, r_closure, true);
-			}
+			LOAD_VREG(X0, ra);
 
 			// X1 = args (SP)
 			arm_mov_reg(ctx, X1, SP, true);
@@ -5162,10 +5156,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Store result if needed
 			if (dst && dst->t->kind != HVOID) {
-				Arm64Reg rd = GET_REG(dst);
-				if (rd != X0) {
-					arm_mov_reg(ctx, rd, X0, true);
-				}
+				STORE_VREG(X0, dst);
 			}
 		} else {
 			// Regular closure: struct { fun, value, hasValue }
@@ -5236,10 +5227,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Store result if needed
 			if (dst && dst->t->kind != HVOID) {
-				Arm64Reg rd = GET_REG(dst);
-				if (rd != X0) {
-					arm_mov_reg(ctx, rd, X0, true);
-				}
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -5613,21 +5601,14 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				if (set_func) {
 					// Arguments: value (X0), hash (X1), object (X2)
-					Arm64Reg r_value = GET_REG(rb);
-					Arm64Reg r_obj = GET_REG(dst);
-
-					// Move value to X0
-					if (r_value != X0) {
-						arm_mov_reg(ctx, X0, r_value, true);
-					}
+					// Load value into X0
+					LOAD_VREG(X0, rb);
 
 					// Load hash into X1
 					arm_load_imm64(ctx, X1, hash);
 
-					// Move object to X2
-					if (r_obj != X2) {
-						arm_mov_reg(ctx, X2, r_obj, true);
-					}
+					// Load object into X2
+					LOAD_VREG(X2, dst);
 
 					// Load function pointer into X9
 					arm_load_imm64(ctx, X9, (uint64_t)set_func);
