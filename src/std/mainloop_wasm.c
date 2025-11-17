@@ -37,20 +37,21 @@ static vclosure* get_mainloop_tick() {
     return cl;
 }
 
+// Forward declare with weak attribute so it's optional
+extern vdynamic* haxe_MainLoop_tick() __attribute__((weak));
+
 // Emscripten main loop callback - calls haxe.MainLoop.tick()
 static void mainloop_tick_callback() {
     if (!mainloop_running) {
         return;
     }
 
-    // Call haxe.MainLoop.tick() directly instead of through closure
-    // This avoids potential issues with closure setup
-    extern vdynamic* haxe_MainLoop_tick();
-
-    vdynamic *result = haxe_MainLoop_tick();
-
-    // tick() returns the wait time until next event
-    // We run at ~60fps regardless to catch all events promptly
+    // Call haxe.MainLoop.tick() directly if it exists
+    if (haxe_MainLoop_tick != NULL) {
+        vdynamic *result = haxe_MainLoop_tick();
+        // tick() returns the wait time until next event
+        // We run at ~60fps regardless to catch all events promptly
+    }
 }
 
 // Start the main loop automatically (called after main())
@@ -71,9 +72,14 @@ HL_PRIM void hl_mainloop_stop() {
 }
 
 // Check if MainLoop has events (called to see if we should keep running)
-extern bool haxe_MainLoop_hasEvents();
+// Use weak symbol so it's optional - returns false if haxe.MainLoop not used
+extern bool haxe_MainLoop_hasEvents() __attribute__((weak));
 
 HL_PRIM bool hl_mainloop_has_events() {
+    // If haxe.MainLoop wasn't compiled in (no timers used), return false
+    if (haxe_MainLoop_hasEvents == NULL) {
+        return false;
+    }
     return haxe_MainLoop_hasEvents();
 }
 
