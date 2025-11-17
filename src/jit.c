@@ -302,22 +302,24 @@ typedef enum {
 
 // ARM64 Condition Codes
 typedef enum {
-	COND_EQ = 0x0,  // Equal (Z set)
-	COND_NE = 0x1,  // Not equal (Z clear)
-	COND_CS = 0x2,  // Carry set / unsigned higher or same
-	COND_CC = 0x3,  // Carry clear / unsigned lower
-	COND_MI = 0x4,  // Minus / negative
-	COND_PL = 0x5,  // Plus / positive or zero
-	COND_VS = 0x6,  // Overflow set
-	COND_VC = 0x7,  // Overflow clear
-	COND_HI = 0x8,  // Unsigned higher
-	COND_LS = 0x9,  // Unsigned lower or same
-	COND_GE = 0xA,  // Signed greater than or equal
-	COND_LT = 0xB,  // Signed less than
-	COND_GT = 0xC,  // Signed greater than
-	COND_LE = 0xD,  // Signed less than or equal
-	COND_AL = 0xE,  // Always (unconditional)
-	COND_NV = 0xF   // Never (reserved)
+	ARM64_COND_EQ = 0x0,  // Equal (Z set)
+	ARM64_COND_NE = 0x1,  // Not equal (Z clear)
+	ARM64_COND_CS = 0x2,  // Carry set / unsigned higher or same
+	ARM64_COND_HS = 0x2,  // Alias for CS (unsigned higher or same)
+	ARM64_COND_CC = 0x3,  // Carry clear / unsigned lower
+	ARM64_COND_LO = 0x3,  // Alias for CC (unsigned lower)
+	ARM64_COND_MI = 0x4,  // Minus / negative
+	ARM64_COND_PL = 0x5,  // Plus / positive or zero
+	ARM64_COND_VS = 0x6,  // Overflow set
+	ARM64_COND_VC = 0x7,  // Overflow clear
+	ARM64_COND_HI = 0x8,  // Unsigned higher
+	ARM64_COND_LS = 0x9,  // Unsigned lower or same
+	ARM64_COND_GE = 0xA,  // Signed greater than or equal
+	ARM64_COND_LT = 0xB,  // Signed less than
+	ARM64_COND_GT = 0xC,  // Signed greater than
+	ARM64_COND_LE = 0xD,  // Signed less than or equal
+	ARM64_COND_AL = 0xE,  // Always (unconditional)
+	ARM64_COND_NV = 0xF   // Never (reserved)
 } Arm64Condition;
 
 // ARM64 buffer writing macro (instructions are 32-bit)
@@ -3131,12 +3133,18 @@ static void make_dyn_cast( jit_ctx *ctx, vreg *dst, vreg *v ) {
 
 #endif // HL_JIT_X86
 
+// Forward declarations for shared helper functions
+static double uint_to_double( unsigned int v );
+
 // Forward declarations for ARM64 encoders (defined later in file)
 #ifdef HL_JIT_ARM64
 static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
 static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
 static void arm_add_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_add_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64);
 static void arm_sub_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_sub_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64);
+static void arm_subs_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_mul(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_sdiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_udiv(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
@@ -3152,10 +3160,26 @@ static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int
 static void arm_ret(jit_ctx *ctx, Arm64Reg rn);
 static void arm_load_imm64(jit_ctx *ctx, Arm64Reg rd, uint64_t imm);
 static void arm_tst_reg(jit_ctx *ctx, Arm64Reg rn, Arm64Reg rm, bool is64);
+static void arm_ldr_reg(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, Arm64Reg rm, int size);
+static void arm_str_reg(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, Arm64Reg rm, int size);
+static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size);
+static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size);
 static int arm_b(jit_ctx *ctx, int offset);
 static int arm_b_cond(jit_ctx *ctx, Arm64Condition cond, int offset);
 static int arm_cbz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64);
 static int arm_cbnz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64);
+static int arm_do_jump(jit_ctx *ctx);
+static int arm_do_cbz(jit_ctx *ctx, Arm64Reg rt, bool is64);
+static int arm_do_cbnz(jit_ctx *ctx, Arm64Reg rt, bool is64);
+static int arm_do_jump_cond(jit_ctx *ctx, Arm64Condition cond);
+static void arm_patch_cbz(jit_ctx *ctx, int pos, int target);
+static void arm_patch_cbnz(jit_ctx *ctx, int pos, int target);
+static void arm_patch_jump(jit_ctx *ctx, int jump_pos);
+static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64);
+static void register_jump(jit_ctx *ctx, int jump_pos, int target);
+static void arm_prologue(jit_ctx *ctx, int framesize);
+static void arm_epilogue(jit_ctx *ctx, int framesize);
+static int stack_size(hl_type *t);
 #endif
 
 int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
@@ -4878,9 +4902,66 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		r->stack.id = i < 19 ? i : -1;  // Simple vreg->preg mapping
 	}
 
-	// Simple function prologue - save FP and LR
-	// Note: SP is register 31 in ARM64, overlaps with XZR
-	arm_stp(ctx, X29, X30, (Arm64Reg)31, -16, true, true);  // stp x29, x30, [sp, #-16]!
+	// ===== STACK FRAME INITIALIZATION =====
+	// Calculate stack offsets for all variables
+	// ARM64 stack layout (growing downwards):
+	//   High addresses
+	//   +------------------+
+	//   | Saved LR (X30)   | <- X29 + 8 (frame pointer + 8)
+	//   +------------------+
+	//   | Saved FP (X29)   | <- X29 (frame pointer)
+	//   +------------------+
+	//   | Local var 1      | <- X29 - 8  (stackPos = -8)
+	//   | Local var 2      | <- X29 - 16 (stackPos = -16)
+	//   | ...              |
+	//   +------------------+ <- SP
+	//   Low addresses
+	//
+	// stackPos convention:
+	//   - Negative values: local variables below frame pointer (X29 - abs(stackPos))
+	//   - Positive values: function arguments above frame pointer (X29 + stackPos)
+
+	int size = 0;
+	int argsSize = 0;
+
+	// Process function arguments first
+	// In ARM64 AAPCS64, first 8 args go in X0-X7
+	// Additional args would be on stack (above frame pointer)
+	for(i=0;i<nargs;i++) {
+		vreg *r = R(i);
+		if( i < 8 ) {
+			// Argument in register - allocate space in local stack area
+			size += r->size;
+			size += hl_pad_size(size,r->t);  // Align variable
+			r->stackPos = -size;
+		} else {
+			// Argument on caller's stack (above our frame pointer)
+			// These are at FP + 16 (skip saved FP/LR) + offset
+			r->stackPos = argsSize + 16;  // 16 = size of saved FP (8) + LR (8)
+			argsSize += stack_size(r->t);
+		}
+	}
+
+	// Process local variables (everything after arguments)
+	for(i=nargs;i<f->nregs;i++) {
+		vreg *r = R(i);
+		size += r->size;
+		size += hl_pad_size(size,r->t);  // Align local vars
+		r->stackPos = -size;
+	}
+
+	// Align stack frame to 16 bytes (ARM64 requirement)
+	size += (-size) & 15;
+
+	// Store total stack frame size (excluding saved FP/LR which arm_prologue handles)
+	ctx->totalRegsSize = size;
+
+	// Function prologue - save FP and LR, set up frame pointer
+	// arm_prologue will:
+	//   1. STP X29, X30, [SP, #-(size+16)]!  ; save FP/LR, allocate frame
+	//   2. MOV X29, SP                       ; set frame pointer
+	int framesize = size + 16;  // size + 16 bytes for saved FP/LR
+	arm_prologue(ctx, framesize);
 
 	// Helper: get physical register for vreg
 	#define GET_REG(vr) ((Arm64Reg)((vr) && (vr)->stack.id >= 0 ? (vr)->stack.id : X0))
@@ -5091,8 +5172,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					arm_mov_reg(ctx, X0, ret_reg, true);
 				}
 			}
-			// Restore FP and LR, return
-			arm_ldp(ctx, X29, X30, (Arm64Reg)31, 16, true, false);  // ldp x29, x30, [sp], #16
+			// Function epilogue - restore FP and LR, deallocate frame, return
+			// framesize was calculated during initialization: size + 16
+			arm_epilogue(ctx, ctx->totalRegsSize + 16);
 			arm_ret(ctx, X30);
 			break;
 
@@ -5299,11 +5381,35 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			break;
 
 		case ORef:
-			// dst = &ra - Get reference to stack variable
-			// This needs stack frame context which isn't fully set up yet
-			// For now, placeholder
-			{
-				jit_error("ORef: Stack references not yet implemented in ARM64");
+			// dst = &ra - Get pointer to stack variable
+			// Calculate address as: X29 (FP) +/- stackPos
+			if (dst && ra) {
+				Arm64Reg rd = GET_REG(dst);
+				int stackPos = ra->stackPos;
+
+				if (stackPos < 0) {
+					// Local variable: address = FP - abs(stackPos)
+					// SUB Xd, X29, #abs(stackPos)
+					unsigned int offset = (unsigned int)(-stackPos);
+					if (offset <= 4095) {
+						arm_sub_imm(ctx, rd, X29, offset, true);
+					} else {
+						// Large offset: load into temp register
+						arm_load_imm64(ctx, X9, offset);
+						arm_sub_reg(ctx, rd, X29, X9, true);
+					}
+				} else {
+					// Stack argument: address = FP + stackPos
+					// ADD Xd, X29, #stackPos
+					unsigned int offset = (unsigned int)stackPos;
+					if (offset <= 4095) {
+						arm_add_imm(ctx, rd, X29, offset, true);
+					} else {
+						// Large offset: load into temp register
+						arm_load_imm64(ctx, X9, offset);
+						arm_add_reg(ctx, rd, X29, X9, true);
+					}
+				}
 			}
 			break;
 
@@ -6109,8 +6215,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				case HI32:
 				case HUI16:
 				case HUI8:
-				case HI8:
-				case HI16:
 				case HBOOL:
 					get_func = hl_dyn_geti;
 					needs_type_arg = true;  // hl_dyn_geti needs type parameter
@@ -6199,8 +6303,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				case HI32:
 				case HUI16:
 				case HUI8:
-				case HI8:
-				case HI16:
 				case HBOOL:
 					set_func = hl_dyn_seti;
 					break;

@@ -610,6 +610,168 @@ arm_load_imm64(ctx, rd, *(uint64_t*)&val);
 
 ---
 
+#### 3.16 Stack Frame Infrastructure ✅
+**Purpose:** Proper stack frame management for function calls, local variables, and stack references
+
+**Components:**
+- `stackPos` field in vreg structure - Tracks stack offset for each variable
+- `arm_prologue()` - Function entry (save FP/LR, allocate frame)
+- `arm_epilogue()` - Function exit (restore FP/LR, deallocate frame)
+- `ORef` operation - Get pointer to stack variable
+
+**Stack Frame Layout (ARM64 AAPCS64 Convention):**
+```
+   High addresses
+   +------------------+
+   | Stack arg N      | <- FP + (16 + (N-8)*8) [9th+ arguments]
+   | Stack arg 9      | <- FP + 24
+   | Stack arg 8      | <- FP + 16
+   +------------------+
+   | Saved LR (X30)   | <- FP + 8
+   +------------------+
+   | Saved FP (X29)   | <- FP (X29 points here)
+   +------------------+
+   | Local var 1      | <- FP - 8  (stackPos = -8)
+   | Local var 2      | <- FP - 16 (stackPos = -16)
+   | Local var 3      | <- FP - 24 (stackPos = -24)
+   | ...              |
+   +------------------+ <- SP (16-byte aligned)
+   Low addresses
+```
+
+**stackPos Convention:**
+- **Negative values:** Local variables
+  - Variable at stackPos=-8 is at address [X29 - 8]
+  - Variable at stackPos=-16 is at address [X29 - 16]
+- **Positive values:** Stack arguments (9th+ args, first 8 in registers)
+  - Argument 8 is at stackPos=16, address [X29 + 16]
+  - Argument 9 is at stackPos=24, address [X29 + 24]
+
+**Stack Frame Initialization (in hl_jit_function):**
+```c
+// Calculate stack offsets for all variables
+int size = 0;
+int argsSize = 0;
+
+// Process function arguments first
+for(i=0; i<nargs; i++) {
+    vreg *r = R(i);
+    if(i < 8) {
+        // Argument in register - allocate space in local area
+        size += r->size;
+        size += hl_pad_size(size, r->t);
+        r->stackPos = -size;
+    } else {
+        // Argument on caller's stack (above our frame)
+        r->stackPos = argsSize + 16;  // Skip saved FP/LR
+        argsSize += stack_size(r->t);
+    }
+}
+
+// Process local variables
+for(i=nargs; i<f->nregs; i++) {
+    vreg *r = R(i);
+    size += r->size;
+    size += hl_pad_size(size, r->t);
+    r->stackPos = -size;
+}
+
+// Align frame to 16 bytes (ARM64 requirement)
+size += (-size) & 15;
+ctx->totalRegsSize = size;
+
+// Generate prologue
+arm_prologue(ctx, size + 16);
+```
+
+**arm_prologue Implementation:**
+```c
+static void arm_prologue(jit_ctx *ctx, int framesize) {
+    // STP X29, X30, [SP, #-framesize]!  (pre-indexed store pair)
+    // Saves FP and LR, decrements SP by framesize
+    arm_stp(ctx, X29, X30, XZR, -framesize, true, true);
+
+    // MOV X29, SP  (set new frame pointer)
+    arm_mov_reg(ctx, X29, XZR, true);  // XZR context-dependent = SP
+}
+```
+
+**arm_epilogue Implementation:**
+```c
+static void arm_epilogue(jit_ctx *ctx, int framesize) {
+    // LDP X29, X30, [SP], #framesize  (post-indexed load pair)
+    // Restores FP and LR, increments SP by framesize
+    arm_ldp(ctx, X29, X30, XZR, framesize, true, false);
+}
+```
+
+**ORef - Stack Reference Operation:**
+```c
+case ORef:
+    // dst = &ra - Get pointer to stack variable
+    if (dst && ra) {
+        Arm64Reg rd = GET_REG(dst);
+        int stackPos = ra->stackPos;
+
+        if (stackPos < 0) {
+            // Local variable: address = FP - abs(stackPos)
+            unsigned int offset = (unsigned int)(-stackPos);
+            if (offset <= 4095) {
+                arm_sub_imm(ctx, rd, X29, offset, true);
+            } else {
+                arm_load_imm64(ctx, X9, offset);
+                arm_sub_reg(ctx, rd, X29, X9, true);
+            }
+        } else {
+            // Stack argument: address = FP + stackPos
+            unsigned int offset = (unsigned int)stackPos;
+            if (offset <= 4095) {
+                arm_add_imm(ctx, rd, X29, offset, true);
+            } else {
+                arm_load_imm64(ctx, X9, offset);
+                arm_add_reg(ctx, rd, X29, X9, true);
+            }
+        }
+    }
+    break;
+```
+
+**Function Return (ORet) with Epilogue:**
+```c
+case ORet:
+    if (dst) {
+        // Move return value to X0 if needed
+        Arm64Reg ret_reg = GET_REG(dst);
+        if (ret_reg != X0) {
+            arm_mov_reg(ctx, X0, ret_reg, true);
+        }
+    }
+    // Restore frame and return
+    arm_epilogue(ctx, ctx->totalRegsSize + 16);
+    arm_ret(ctx, X30);  // RET X30
+    break;
+```
+
+**Key Implementation Details:**
+1. **16-byte alignment:** ARM64 requires SP to be 16-byte aligned at function boundaries
+2. **STP/LDP instructions:** Store/Load pair efficiently saves/restores FP+LR in one instruction
+3. **Frame pointer (X29):** Always points to saved FP on stack, creating frame chain
+4. **Pre/Post indexing:** STP with pre-index, LDP with post-index for efficient frame setup/teardown
+5. **stackPos tracking:** Each vreg knows its stack location, enabling ORef implementation
+
+**Testing:**
+- `test_stack_frame.c` - Validates frame layout, alignment, frame chain
+- `test_oref.c` - Validates ORef address calculation and pointer operations
+- Tests verify AAPCS64 calling convention compliance
+
+**Status:** ✅ **Fully Implemented**
+- Stack frame initialization: Complete
+- Prologue/epilogue generation: Complete
+- ORef operation: Complete
+- Test coverage: Comprehensive
+
+---
+
 ## How It Works
 
 ### Overall Architecture

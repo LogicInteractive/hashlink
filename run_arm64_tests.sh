@@ -72,6 +72,10 @@ echo ""
 run_test "test_arm64_basic"
 run_test "test_shift_encoders"
 
+# Stack frame tests
+run_test "test_stack_frame"
+run_test "test_oref"
+
 # Phase 2 tests  
 run_test "test_jump_operations"
 
