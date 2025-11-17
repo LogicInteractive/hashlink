@@ -230,11 +230,21 @@ ifdef DEBUG
 CFLAGS += -g
 endif
 
-all: libhl libs
+# Default target: just build core library and executables
+# Use "make all-with-libs" to build optional libraries (fmt, sdl, etc.)
+all: libhl
 ifeq ($(ARCH),arm64)
 	$(warning HashLink vm is not supported on arm64, skipping)
 else
 all: hl
+endif
+
+# Optional: build with all libraries
+all-with-libs: libhl libs
+ifeq ($(ARCH),arm64)
+	$(warning HashLink vm is not supported on arm64, skipping)
+else
+all-with-libs: hl
 endif
 
 install:

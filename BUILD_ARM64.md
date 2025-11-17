@@ -13,12 +13,15 @@ sudo apt-get update
 sudo apt-get install -y build-essential gcc make libpng-dev libjpeg-dev \
     libvorbis-dev libopenal-dev libsdl2-dev libmbedtls-dev libuv1-dev
 
-# Build with ARM64 JIT enabled
+# Build with ARM64 JIT enabled (core library only)
 make CFLAGS="-DHL_JIT_ARM64 -I src -fPIC"
 
+# Or build with all optional libraries (requires more dependencies)
+# make all-with-libs CFLAGS="-DHL_JIT_ARM64 -I src -fPIC"
+
 # Verify the build
-./hl --version
-file libhl.so  # Should show: ELF 64-bit LSB shared object, ARM aarch64
+ls -lh libhl.so  # Should exist
+file libhl.so    # Should show: ELF 64-bit LSB shared object, ARM aarch64
 ```
 
 ## What's Different on ARM64
@@ -28,6 +31,9 @@ The Makefile has been updated to automatically handle ARM64 builds:
 1. **No `-m64` flag** - This x86-specific flag is automatically skipped on ARM64
 2. **`-fPIC` required** - Position Independent Code is mandatory for shared libraries on ARM64
 3. **Architecture detection** - The Makefile detects `aarch64` or `arm64` architecture automatically
+4. **Core-only default build** - The default `make` target builds just the core library (libhl.so), not optional libraries
+   - Avoids dependencies on turbojpeg, SDL, OpenAL, etc.
+   - Use `make all-with-libs` if you need the extra libraries
 
 ## Build Options
 
