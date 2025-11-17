@@ -4,15 +4,26 @@
 #include <hl/BaseType.h>
 #include <hl/Class.h>
 #include <_std/String.h>
-#include <_std/Date.h>
 #include <hl/types/ArrayAccess.h>
 #include <hl/types/ArrayBase.h>
 #include <haxe/Log.h>
+#include <_std/WasmCanvas.h>
+#include <_std/CanvasTest.h>
+#include <sys/thread/_EventLoop/RegularEvent.h>
+#include <sys/thread/Lock.h>
+#include <sys/thread/EventLoop.h>
+#include <sys/thread/_Thread/HaxeThread.h>
+#include <haxe/Timer.h>
+#include <_std/Math.h>
+#include <_std/Date.h>
 #include <_std/StringBuf.h>
 #include <_std/SysError.h>
 #include <hl/natives.h>
 #include <hl/Enum.h>
 #include <haxe/Exception.h>
+#include <sys/thread/NoEventLoopException.h>
+#include <haxe/MainEvent.h>
+#include <haxe/MainLoop.h>
 #include <haxe/exceptions/PosException.h>
 #include <haxe/exceptions/NotImplementedException.h>
 #include <haxe/iterators/ArrayIterator.h>
@@ -27,12 +38,14 @@
 #include <hl/types/ArrayDynIterator.h>
 #include <hl/types/ArrayObjIterator.h>
 #include <_std/Std.h>
-#include <_std/HelloWorld.h>
 #include <hl/CoreType.h>
 #include <hl/CoreEnum.h>
 #include <hl/_Bytes/Bytes_Impl_.h>
 #include <_std/Sys.h>
 #include <_std/Type.h>
+#include <sys/thread/_Thread/Thread_Impl_.h>
+#include <sys/thread/_Mutex/Mutex_Impl_.h>
+#include <haxe/EntryPoint.h>
 #include <haxe/NativeStackTrace.h>
 #include <haxe/ds/ArraySort.h>
 #include <hl/_NativeArray/NativeArray_Impl_.h>
@@ -40,28 +53,40 @@
 #include <hl/types/ArrayDyn.h>
 #include <hl/types/_BytesMap/BytesMap_Impl_.h>
 extern hl_type t$String;
+extern vbyte string$115c6dd[];
 
 // Globals
 hl__$BaseType g$_hl_BaseType = 0;
 hl__Class g$_hl_Class = 0;
 $String g$_String = 0;
-$Date g$_Date = 0;
 hl__types__$ArrayAccess g$_hl_types_ArrayAccess = 0;
 hl__types__$ArrayBase g$_hl_types_ArrayBase = 0;
 haxe__$Log g$_haxe_Log = 0;
-String s$f9fd255 = 0;
-String s$HelloWorld_hx = 0;
-String s$HelloWorld = 0;
+String s$_Canvas_2D_Graphics_Test_ = 0;
+String s$CanvasTest_hx = 0;
+String s$CanvasTest = 0;
 String s$main = 0;
-String s$41f0b90 = 0;
-String s$Math_test_ = 0;
-String s$193eba1 = 0;
-String s$fcacca1 = 0;
-String s$6999ae0 = 0;
+String s$Initializing_canvas_ = 0;
+$WasmCanvas g$_WasmCanvas = 0;
+$CanvasTest g$_CanvasTest = 0;
+String s$gameCanvas = 0;
+String s$Starting_animation_loop_ = 0;
+sys__thread___EventLoop__$RegularEvent g$deb90ea = 0;
+sys__thread__$Lock g$_sys_thread_Lock = 0;
+sys__thread__$EventLoop g$_sys_thread_EventLoop = 0;
+sys__thread___Thread__$HaxeThread g$_sys_thread__Thread_HaxeThread = 0;
+haxe__$Timer g$_haxe_Timer = 0;
+$Math g$_Math = 0;
+String s$HashLink_WASM_Canvas_2D_Demo = 0;
+String s$Frame_ = 0;
+String s$60_FPS = 0;
+String s$Ball_ = 0;
+String s$fc763cb = 0;
+String s$9371d7a = 0;
+$Date g$_Date = 0;
 String s$Can_t_add_ = 0;
 String s$84c4047 = 0;
 String s$_and_ = 0;
-String s$9371d7a = 0;
 String s$Invalid_unicode_char_ = 0;
 String s$null = 0;
 String s$ = 0;
@@ -72,9 +97,11 @@ String s$68b329d = 0;
 hl_bytes_map* g$__types__ = 0;
 hl__$Enum g$_hl_Enum = 0;
 haxe__$Exception g$_haxe_Exception = 0;
+sys__thread__$NoEventLoopException g$_sys_thread_NoEventLoopException = 0;
 String s$853ae90 = 0;
-String s$fc763cb = 0;
 String s$e265492 = 0;
+haxe__$MainEvent g$_haxe_MainEvent = 0;
+haxe__$MainLoop g$_haxe_MainLoop = 0;
 haxe__exceptions__$PosException g$_haxe_exceptions_PosException = 0;
 String s$_unknown_ = 0;
 String s$_in_ = 0;
@@ -117,7 +144,7 @@ hl__types__$ArrayDynIterator g$_hl_types_ArrayDynIterator = 0;
 hl__types__$ArrayObjIterator g$_hl_types_ArrayObjIterator = 0;
 $Std g$_Std = 0;
 String s$2f43b42 = 0;
-$HelloWorld g$_HelloWorld = 0;
+String s$115c6dd = 0;
 hl__CoreType g$_Float = 0;
 String s$Float = 0;
 hl__CoreType g$_Int = 0;
@@ -129,6 +156,9 @@ String s$Dynamic = 0;
 hl___Bytes__$Bytes_Impl_ g$_hl__Bytes_Bytes_Impl_ = 0;
 $Sys g$_Sys = 0;
 $Type g$_Type = 0;
+sys__thread___Thread__$Thread_Impl_ g$_sys_thread__Thread_Thread_Impl_ = 0;
+sys__thread___Mutex__$Mutex_Impl_ g$_sys_thread__Mutex_Mutex_Impl_ = 0;
+haxe__$EntryPoint g$_haxe_EntryPoint = 0;
 haxe__$NativeStackTrace g$_haxe_NativeStackTrace = 0;
 haxe__ds__$ArraySort g$_haxe_ds_ArraySort = 0;
 venum* g$haxe_io_Error_Blocked = 0;
@@ -139,26 +169,28 @@ String s$Array = 0;
 hl__types__$ArrayDyn g$_hl_types_ArrayDyn = 0;
 String s$hl_types_ArrayDyn = 0;
 hl__types___BytesMap__$BytesMap_Impl_ g$2c4fafe = 0;
-static struct _String const_s$f9fd255 = {&t$String,(vbyte*)USTR("Hello from Haxe compiled to HashLink HL-C!"),42};
-static struct _String const_s$HelloWorld_hx = {&t$String,(vbyte*)USTR("HelloWorld.hx"),13};
-static struct _String const_s$HelloWorld = {&t$String,(vbyte*)USTR("HelloWorld"),10};
+static struct _String const_s$_Canvas_2D_Graphics_Test_ = {&t$String,(vbyte*)USTR("=== Canvas 2D Graphics Test ==="),31};
+static struct _String const_s$CanvasTest_hx = {&t$String,(vbyte*)USTR("CanvasTest.hx"),13};
+static struct _String const_s$CanvasTest = {&t$String,(vbyte*)USTR("CanvasTest"),10};
 static struct _String const_s$main = {&t$String,(vbyte*)USTR("main"),4};
-static struct _String const_s$41f0b90 = {&t$String,(vbyte*)USTR("This is REAL Haxe code running on WASM!"),39};
-static struct _String const_s$Math_test_ = {&t$String,(vbyte*)USTR("Math test: "),11};
-static struct _String const_s$193eba1 = {&t$String,(vbyte*)USTR(" + "),3};
-static struct _String const_s$fcacca1 = {&t$String,(vbyte*)USTR(" = "),3};
-static struct _String const_s$6999ae0 = {&t$String,(vbyte*)USTR("Success! Haxe → HL-C → WASM pipeline working!"),45};
+static struct _String const_s$Initializing_canvas_ = {&t$String,(vbyte*)USTR("Initializing canvas..."),22};
+static struct _String const_s$gameCanvas = {&t$String,(vbyte*)USTR("gameCanvas"),10};
+static struct _String const_s$Starting_animation_loop_ = {&t$String,(vbyte*)USTR("Starting animation loop..."),26};
+static struct _String const_s$HashLink_WASM_Canvas_2D_Demo = {&t$String,(vbyte*)USTR("HashLink WASM - Canvas 2D Demo"),30};
+static struct _String const_s$Frame_ = {&t$String,(vbyte*)USTR("Frame: "),7};
+static struct _String const_s$60_FPS = {&t$String,(vbyte*)USTR("60 FPS"),6};
+static struct _String const_s$Ball_ = {&t$String,(vbyte*)USTR("Ball: ("),7};
+static struct _String const_s$fc763cb = {&t$String,(vbyte*)USTR(", "),2};
+static struct _String const_s$9371d7a = {&t$String,(vbyte*)USTR(")"),1};
 static struct _String const_s$Can_t_add_ = {&t$String,(vbyte*)USTR("Can't add "),10};
 static struct _String const_s$84c4047 = {&t$String,(vbyte*)USTR("("),1};
 static struct _String const_s$_and_ = {&t$String,(vbyte*)USTR(") and "),6};
-static struct _String const_s$9371d7a = {&t$String,(vbyte*)USTR(")"),1};
 static struct _String const_s$Invalid_unicode_char_ = {&t$String,(vbyte*)USTR("Invalid unicode char "),21};
 static struct _String const_s$null = {&t$String,(vbyte*)USTR("null"),4};
 static struct _String const_s$ = {&t$String,(vbyte*)USTR(""),0};
 static struct _String const_s$SysError_ = {&t$String,(vbyte*)USTR("SysError("),9};
 static struct _String const_s$68b329d = {&t$String,(vbyte*)USTR("\n"),1};
 static struct _String const_s$853ae90 = {&t$String,(vbyte*)USTR(":"),1};
-static struct _String const_s$fc763cb = {&t$String,(vbyte*)USTR(", "),2};
 static struct _String const_s$e265492 = {&t$String,(vbyte*)USTR(": "),2};
 static struct _String const_s$_unknown_ = {&t$String,(vbyte*)USTR("(unknown)"),9};
 static struct _String const_s$_in_ = {&t$String,(vbyte*)USTR(" in "),4};
@@ -187,6 +219,7 @@ static struct _String const_s$resize = {&t$String,(vbyte*)USTR("resize"),6};
 static struct _String const_s$toString = {&t$String,(vbyte*)USTR("toString"),8};
 static struct _String const_s$Invalid_array_index_ = {&t$String,(vbyte*)USTR("Invalid array index "),20};
 static struct _String const_s$2f43b42 = {&t$String,(vbyte*)USTR("..."),3};
+static struct _String const_s$115c6dd = {&t$String,(vbyte*)string$115c6dd,73};
 static struct _String const_s$Float = {&t$String,(vbyte*)USTR("Float"),5};
 static struct _String const_s$Int = {&t$String,(vbyte*)USTR("Int"),3};
 static struct _String const_s$Bool = {&t$String,(vbyte*)USTR("Bool"),4};
@@ -195,26 +228,28 @@ static struct _String const_s$Array = {&t$String,(vbyte*)USTR("Array"),5};
 static struct _String const_s$hl_types_ArrayDyn = {&t$String,(vbyte*)USTR("hl.types.ArrayDyn"),17};
 
 void hl_init_roots() {
-	s$f9fd255 = &const_s$f9fd255;
-	s$HelloWorld_hx = &const_s$HelloWorld_hx;
-	s$HelloWorld = &const_s$HelloWorld;
+	s$_Canvas_2D_Graphics_Test_ = &const_s$_Canvas_2D_Graphics_Test_;
+	s$CanvasTest_hx = &const_s$CanvasTest_hx;
+	s$CanvasTest = &const_s$CanvasTest;
 	s$main = &const_s$main;
-	s$41f0b90 = &const_s$41f0b90;
-	s$Math_test_ = &const_s$Math_test_;
-	s$193eba1 = &const_s$193eba1;
-	s$fcacca1 = &const_s$fcacca1;
-	s$6999ae0 = &const_s$6999ae0;
+	s$Initializing_canvas_ = &const_s$Initializing_canvas_;
+	s$gameCanvas = &const_s$gameCanvas;
+	s$Starting_animation_loop_ = &const_s$Starting_animation_loop_;
+	s$HashLink_WASM_Canvas_2D_Demo = &const_s$HashLink_WASM_Canvas_2D_Demo;
+	s$Frame_ = &const_s$Frame_;
+	s$60_FPS = &const_s$60_FPS;
+	s$Ball_ = &const_s$Ball_;
+	s$fc763cb = &const_s$fc763cb;
+	s$9371d7a = &const_s$9371d7a;
 	s$Can_t_add_ = &const_s$Can_t_add_;
 	s$84c4047 = &const_s$84c4047;
 	s$_and_ = &const_s$_and_;
-	s$9371d7a = &const_s$9371d7a;
 	s$Invalid_unicode_char_ = &const_s$Invalid_unicode_char_;
 	s$null = &const_s$null;
 	s$ = &const_s$;
 	s$SysError_ = &const_s$SysError_;
 	s$68b329d = &const_s$68b329d;
 	s$853ae90 = &const_s$853ae90;
-	s$fc763cb = &const_s$fc763cb;
 	s$e265492 = &const_s$e265492;
 	s$_unknown_ = &const_s$_unknown_;
 	s$_in_ = &const_s$_in_;
@@ -243,6 +278,7 @@ void hl_init_roots() {
 	s$toString = &const_s$toString;
 	s$Invalid_array_index_ = &const_s$Invalid_array_index_;
 	s$2f43b42 = &const_s$2f43b42;
+	s$115c6dd = &const_s$115c6dd;
 	s$Float = &const_s$Float;
 	s$Int = &const_s$Int;
 	s$Bool = &const_s$Bool;
@@ -252,15 +288,26 @@ void hl_init_roots() {
 	hl_add_root((void**)&g$_hl_BaseType);
 	hl_add_root((void**)&g$_hl_Class);
 	hl_add_root((void**)&g$_String);
-	hl_add_root((void**)&g$_Date);
 	hl_add_root((void**)&g$_hl_types_ArrayAccess);
 	hl_add_root((void**)&g$_hl_types_ArrayBase);
 	hl_add_root((void**)&g$_haxe_Log);
+	hl_add_root((void**)&g$_WasmCanvas);
+	hl_add_root((void**)&g$_CanvasTest);
+	hl_add_root((void**)&g$deb90ea);
+	hl_add_root((void**)&g$_sys_thread_Lock);
+	hl_add_root((void**)&g$_sys_thread_EventLoop);
+	hl_add_root((void**)&g$_sys_thread__Thread_HaxeThread);
+	hl_add_root((void**)&g$_haxe_Timer);
+	hl_add_root((void**)&g$_Math);
+	hl_add_root((void**)&g$_Date);
 	hl_add_root((void**)&g$_StringBuf);
 	hl_add_root((void**)&g$_SysError);
 	hl_add_root((void**)&g$__types__);
 	hl_add_root((void**)&g$_hl_Enum);
 	hl_add_root((void**)&g$_haxe_Exception);
+	hl_add_root((void**)&g$_sys_thread_NoEventLoopException);
+	hl_add_root((void**)&g$_haxe_MainEvent);
+	hl_add_root((void**)&g$_haxe_MainLoop);
 	hl_add_root((void**)&g$_haxe_exceptions_PosException);
 	hl_add_root((void**)&g$c9feed3);
 	hl_add_root((void**)&g$_haxe_iterators_ArrayIterator);
@@ -276,7 +323,6 @@ void hl_init_roots() {
 	hl_add_root((void**)&g$_hl_types_ArrayDynIterator);
 	hl_add_root((void**)&g$_hl_types_ArrayObjIterator);
 	hl_add_root((void**)&g$_Std);
-	hl_add_root((void**)&g$_HelloWorld);
 	hl_add_root((void**)&g$_Float);
 	hl_add_root((void**)&g$_Int);
 	hl_add_root((void**)&g$_Bool);
@@ -284,6 +330,9 @@ void hl_init_roots() {
 	hl_add_root((void**)&g$_hl__Bytes_Bytes_Impl_);
 	hl_add_root((void**)&g$_Sys);
 	hl_add_root((void**)&g$_Type);
+	hl_add_root((void**)&g$_sys_thread__Thread_Thread_Impl_);
+	hl_add_root((void**)&g$_sys_thread__Mutex_Mutex_Impl_);
+	hl_add_root((void**)&g$_haxe_EntryPoint);
 	hl_add_root((void**)&g$_haxe_NativeStackTrace);
 	hl_add_root((void**)&g$_haxe_ds_ArraySort);
 	hl_add_root((void**)&g$haxe_io_Error_Blocked);
@@ -293,3 +342,6 @@ void hl_init_roots() {
 	hl_add_root((void**)&g$_hl_types_ArrayDyn);
 	hl_add_root((void**)&g$2c4fafe);
 }
+// Event loop is not available. Refer to sys.thread.Thread.runW...
+vbyte string$115c6dd[] = {69,0,118,0,101,0,110,0,116,0,32,0,108,0,111,0,111,0,112,0,32,0,105,0,115,0,32,0,110,0,111,0,116,0,32,0,97,0,118,0,97,0,105,0,108,0,97,0,98,0,108,0,101,0,46,0,32,0,82,0,101,0,102,0,101,0,114,0,32,0,116,0,111,0,32,0,115,0,121,0,115,0,46,0,116,0,104,0,114,0,101,0,97,0,100,0,46,0,84,0,104,0,114,0,101,0,97,0,100,0,46,0,114,0,117,0,110,0,87,0,105,0,116,0,104,0,69\
+	,0,118,0,101,0,110,0,116,0,76,0,111,0,111,0,112,0,46,0,0,0};

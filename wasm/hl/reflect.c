@@ -19,16 +19,27 @@ void *hlc_static_call( void *fun, hl_type *t, void **args, vdynamic *out ) {
 		case 1:
 			out->v.i = ((int (*)(void))fun)();
 			return &out->v.i;
+		case 3:
+			out->v.d = ((double (*)(void))fun)();
+			return &out->v.d;
 		}
 		break;
 	case 1:
 		chk |= TKIND[t->fun->args[0]->kind] << 3;
 		switch( chk ) {
+		case 25:
+			out->v.i = ((int (*)(double))fun)(*(double*)args[0]);
+			return &out->v.i;
+		case 27:
+			out->v.d = ((double (*)(double))fun)(*(double*)args[0]);
+			return &out->v.d;
 		case 41:
 			out->v.i = ((int (*)(vdynamic*))fun)((vdynamic*)args[0]);
 			return &out->v.i;
 		case 45:
 			return ((vdynamic* (*)(vdynamic*))fun)((vdynamic*)args[0]);
+		case 29:
+			return ((vdynamic* (*)(double))fun)(*(double*)args[0]);
 		case 40:
 			((void (*)(vdynamic*))fun)((vdynamic*)args[0]);
 			return NULL;
@@ -49,6 +60,9 @@ void *hlc_static_call( void *fun, hl_type *t, void **args, vdynamic *out ) {
 		case 168:
 			((void (*)(vdynamic*,float))fun)((vdynamic*)args[0],*(float*)args[1]);
 			return NULL;
+		case 219:
+			out->v.d = ((double (*)(double,double))fun)(*(double*)args[0],*(double*)args[1]);
+			return &out->v.d;
 		case 109:
 			return ((vdynamic* (*)(vdynamic*,int))fun)((vdynamic*)args[0],*(int*)args[1]);
 		case 73:
@@ -88,6 +102,11 @@ void *hlc_static_call( void *fun, hl_type *t, void **args, vdynamic *out ) {
 		case 1769:
 			out->v.i = ((int (*)(vdynamic*,double,double))fun)((vdynamic*)args[0],*(double*)args[1],*(double*)args[2]);
 			return &out->v.i;
+		case 872:
+			((void (*)(vdynamic*,vdynamic*,int))fun)((vdynamic*)args[0],(vdynamic*)args[1],*(int*)args[2]);
+			return NULL;
+		case 877:
+			return ((vdynamic* (*)(vdynamic*,vdynamic*,int))fun)((vdynamic*)args[0],(vdynamic*)args[1],*(int*)args[2]);
 		case 1193:
 			out->v.i = ((int (*)(vdynamic*,float,float))fun)((vdynamic*)args[0],*(float*)args[1],*(float*)args[2]);
 			return &out->v.i;
@@ -135,6 +154,9 @@ void *hlc_static_call( void *fun, hl_type *t, void **args, vdynamic *out ) {
 		switch( chk ) {
 		case 21357:
 			return ((vdynamic* (*)(vdynamic*,vdynamic*,int,vdynamic*))fun)((vdynamic*)args[0],(vdynamic*)args[1],*(int*)args[2],(vdynamic*)args[3]);
+		case 14184:
+			((void (*)(vdynamic*,vdynamic*,double,double))fun)((vdynamic*)args[0],(vdynamic*)args[1],*(double*)args[2],*(double*)args[3]);
+			return NULL;
 		case 21096:
 			((void (*)(vdynamic*,int,int,vdynamic*))fun)((vdynamic*)args[0],*(int*)args[1],*(int*)args[2],(vdynamic*)args[3]);
 			return NULL;
@@ -206,6 +228,51 @@ void *hlc_static_call( void *fun, hl_type *t, void **args, vdynamic *out ) {
 			return NULL;
 		}
 		break;
+	case 8:
+		chk |= TKIND[t->fun->args[0]->kind] << 3;
+		chk |= TKIND[t->fun->args[1]->kind] << 6;
+		chk |= TKIND[t->fun->args[2]->kind] << 9;
+		chk |= TKIND[t->fun->args[3]->kind] << 12;
+		chk |= TKIND[t->fun->args[4]->kind] << 15;
+		chk |= TKIND[t->fun->args[5]->kind] << 18;
+		chk |= TKIND[t->fun->args[6]->kind] << 21;
+		chk |= TKIND[t->fun->args[7]->kind] << 24;
+		switch( chk ) {
+		case 95851112:
+			((void (*)(vdynamic*,int,int,int,vdynamic*,vdynamic*,vdynamic*,vdynamic*))fun)((vdynamic*)args[0],*(int*)args[1],*(int*)args[2],*(int*)args[3],(vdynamic*)args[4],(vdynamic*)args[5],(vdynamic*)args[6],(vdynamic*)args[7]);
+			return NULL;
+		case 19173992:
+			((void (*)(vdynamic*,int,int,int,int,int,int,int))fun)((vdynamic*)args[0],*(int*)args[1],*(int*)args[2],*(int*)args[3],*(int*)args[4],*(int*)args[5],*(int*)args[6],*(int*)args[7]);
+			return NULL;
+		}
+		break;
+	case 9:
+		chk |= TKIND[t->fun->args[0]->kind] << 3;
+		chk |= TKIND[t->fun->args[1]->kind] << 6;
+		chk |= TKIND[t->fun->args[2]->kind] << 9;
+		chk |= TKIND[t->fun->args[3]->kind] << 12;
+		chk |= TKIND[t->fun->args[4]->kind] << 15;
+		chk |= TKIND[t->fun->args[5]->kind] << 18;
+		chk |= TKIND[t->fun->args[6]->kind] << 21;
+		chk |= TKIND[t->fun->args[7]->kind] << 24;
+		chk |= TKIND[t->fun->args[8]->kind] << 27;
+		switch( chk ) {
+		case 153391720:
+			((void (*)(vdynamic*,int,int,int,int,int,int,int,int))fun)((vdynamic*)args[0],*(int*)args[1],*(int*)args[2],*(int*)args[3],*(int*)args[4],*(int*)args[5],*(int*)args[6],*(int*)args[7],*(int*)args[8]);
+			return NULL;
+		case 766808680:
+			((void (*)(vdynamic*,int,int,int,int,vdynamic*,vdynamic*,vdynamic*,vdynamic*))fun)((vdynamic*)args[0],*(int*)args[1],*(int*)args[2],*(int*)args[3],*(int*)args[4],(vdynamic*)args[5],(vdynamic*)args[6],(vdynamic*)args[7],(vdynamic*)args[8]);
+			return NULL;
+		case 153391976:
+			((void (*)(vdynamic*,vdynamic*,int,int,int,int,int,int,int))fun)((vdynamic*)args[0],(vdynamic*)args[1],*(int*)args[2],*(int*)args[3],*(int*)args[4],*(int*)args[5],*(int*)args[6],*(int*)args[7],*(int*)args[8]);
+			return NULL;
+		case 766940008:
+			((void (*)(vdynamic*,vdynamic*,int,int,vdynamic*,vdynamic*,vdynamic*,vdynamic*,vdynamic*))fun)((vdynamic*)args[0],(vdynamic*)args[1],*(int*)args[2],*(int*)args[3],(vdynamic*)args[4],(vdynamic*)args[5],(vdynamic*)args[6],(vdynamic*)args[7],(vdynamic*)args[8]);
+			return NULL;
+		}
+		break;
+	case 10:
+		hl_fatal("Too many arguments, TODO:use more bits");
 	}
 	hl_fatal("Unsupported dynamic call");
 	return NULL;
@@ -222,6 +289,23 @@ static int wrap__i(void *value) {
 	hl_wrapper_call(value,NULL,&ret);
 	return ret.v.i;
 }
+static double wrap__d(void *value) {
+	vdynamic ret;
+	hl_wrapper_call(value,NULL,&ret);
+	return ret.v.d;
+}
+static int wrap_d_i(void *value,double p0) {
+	void *args[] = {&p0};
+	vdynamic ret;
+	hl_wrapper_call(value,args,&ret);
+	return ret.v.i;
+}
+static double wrap_d_d(void *value,double p0) {
+	void *args[] = {&p0};
+	vdynamic ret;
+	hl_wrapper_call(value,args,&ret);
+	return ret.v.d;
+}
 static int wrap_p_i(void *value,vdynamic* p0) {
 	void *args[] = {p0};
 	vdynamic ret;
@@ -230,6 +314,10 @@ static int wrap_p_i(void *value,vdynamic* p0) {
 }
 static vdynamic* wrap_p_p(void *value,vdynamic* p0) {
 	void *args[] = {p0};
+	return hl_wrapper_call(value,args,NULL);
+}
+static vdynamic* wrap_d_p(void *value,double p0) {
+	void *args[] = {&p0};
 	return hl_wrapper_call(value,args,NULL);
 }
 static void wrap_p_v(void *value,vdynamic* p0) {
@@ -255,6 +343,12 @@ static int wrap_pp_i(void *value,vdynamic* p0,vdynamic* p1) {
 static void wrap_pf_v(void *value,vdynamic* p0,float p1) {
 	void *args[] = {p0,&p1};
 	hl_wrapper_call(value,args,NULL);
+}
+static double wrap_dd_d(void *value,double p0,double p1) {
+	void *args[] = {&p0,&p1};
+	vdynamic ret;
+	hl_wrapper_call(value,args,&ret);
+	return ret.v.d;
 }
 static vdynamic* wrap_pi_p(void *value,vdynamic* p0,int p1) {
 	void *args[] = {p0,&p1};
@@ -313,6 +407,14 @@ static int wrap_pdd_i(void *value,vdynamic* p0,double p1,double p2) {
 	vdynamic ret;
 	hl_wrapper_call(value,args,&ret);
 	return ret.v.i;
+}
+static void wrap_ppi_v(void *value,vdynamic* p0,vdynamic* p1,int p2) {
+	void *args[] = {p0,p1,&p2};
+	hl_wrapper_call(value,args,NULL);
+}
+static vdynamic* wrap_ppi_p(void *value,vdynamic* p0,vdynamic* p1,int p2) {
+	void *args[] = {p0,p1,&p2};
+	return hl_wrapper_call(value,args,NULL);
 }
 static int wrap_pff_i(void *value,vdynamic* p0,float p1,float p2) {
 	void *args[] = {p0,&p1,&p2};
@@ -382,6 +484,10 @@ static vdynamic* wrap_ppip_p(void *value,vdynamic* p0,vdynamic* p1,int p2,vdynam
 	void *args[] = {p0,p1,&p2,p3};
 	return hl_wrapper_call(value,args,NULL);
 }
+static void wrap_ppdd_v(void *value,vdynamic* p0,vdynamic* p1,double p2,double p3) {
+	void *args[] = {p0,p1,&p2,&p3};
+	hl_wrapper_call(value,args,NULL);
+}
 static void wrap_piip_v(void *value,vdynamic* p0,int p1,int p2,vdynamic* p3) {
 	void *args[] = {p0,&p1,&p2,p3};
 	hl_wrapper_call(value,args,NULL);
@@ -444,6 +550,38 @@ static void wrap_piiiiii_v(void *value,vdynamic* p0,int p1,int p2,int p3,int p4,
 	void *args[] = {p0,&p1,&p2,&p3,&p4,&p5,&p6};
 	hl_wrapper_call(value,args,NULL);
 }
+static void wrap_piiipppp_v(void *value,vdynamic* p0,int p1,int p2,int p3,vdynamic* p4,vdynamic* p5,vdynamic* p6,vdynamic* p7) {
+	void *args[] = {p0,&p1,&p2,&p3,p4,p5,p6,p7};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_piiiiiii_v(void *value,vdynamic* p0,int p1,int p2,int p3,int p4,int p5,int p6,int p7) {
+	void *args[] = {p0,&p1,&p2,&p3,&p4,&p5,&p6,&p7};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_piiiiiiii_v(void *value,vdynamic* p0,int p1,int p2,int p3,int p4,int p5,int p6,int p7,int p8) {
+	void *args[] = {p0,&p1,&p2,&p3,&p4,&p5,&p6,&p7,&p8};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_piiiipppp_v(void *value,vdynamic* p0,int p1,int p2,int p3,int p4,vdynamic* p5,vdynamic* p6,vdynamic* p7,vdynamic* p8) {
+	void *args[] = {p0,&p1,&p2,&p3,&p4,p5,p6,p7,p8};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_ppiiiiiii_v(void *value,vdynamic* p0,vdynamic* p1,int p2,int p3,int p4,int p5,int p6,int p7,int p8) {
+	void *args[] = {p0,p1,&p2,&p3,&p4,&p5,&p6,&p7,&p8};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_ppiippppp_v(void *value,vdynamic* p0,vdynamic* p1,int p2,int p3,vdynamic* p4,vdynamic* p5,vdynamic* p6,vdynamic* p7,vdynamic* p8) {
+	void *args[] = {p0,p1,&p2,&p3,p4,p5,p6,p7,p8};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_piiiiiiiii_v(void *value,vdynamic* p0,int p1,int p2,int p3,int p4,int p5,int p6,int p7,int p8,int p9) {
+	void *args[] = {p0,&p1,&p2,&p3,&p4,&p5,&p6,&p7,&p8,&p9};
+	hl_wrapper_call(value,args,NULL);
+}
+static void wrap_piiiippppp_v(void *value,vdynamic* p0,int p1,int p2,int p3,int p4,vdynamic* p5,vdynamic* p6,vdynamic* p7,vdynamic* p8,vdynamic* p9) {
+	void *args[] = {p0,&p1,&p2,&p3,&p4,p5,p6,p7,p8,p9};
+	hl_wrapper_call(value,args,NULL);
+}
 
 void *hlc_get_wrapper( hl_type *t ) {
 	int chk = TKIND[t->fun->ret->kind];
@@ -453,13 +591,17 @@ void *hlc_get_wrapper( hl_type *t ) {
 		case 5: return wrap__p;
 		case 0: return wrap__v;
 		case 1: return wrap__i;
+		case 3: return wrap__d;
 		}
 		break;
 	case 1:
 		chk |= TKIND[t->fun->args[0]->kind] << 3;
 		switch( chk ) {
+		case 25: return wrap_d_i;
+		case 27: return wrap_d_d;
 		case 41: return wrap_p_i;
 		case 45: return wrap_p_p;
+		case 29: return wrap_d_p;
 		case 40: return wrap_p_v;
 		case 13: return wrap_i_p;
 		}
@@ -471,6 +613,7 @@ void *hlc_get_wrapper( hl_type *t ) {
 		case 169: return wrap_pf_i;
 		case 361: return wrap_pp_i;
 		case 168: return wrap_pf_v;
+		case 219: return wrap_dd_d;
 		case 109: return wrap_pi_p;
 		case 73: return wrap_ii_i;
 		case 105: return wrap_pi_i;
@@ -490,6 +633,8 @@ void *hlc_get_wrapper( hl_type *t ) {
 		case 2665: return wrap_pip_i;
 		case 2925: return wrap_ppp_p;
 		case 1769: return wrap_pdd_i;
+		case 872: return wrap_ppi_v;
+		case 877: return wrap_ppi_p;
 		case 1193: return wrap_pff_i;
 		case 2729: return wrap_pfp_i;
 		case 2793: return wrap_pdp_i;
@@ -512,6 +657,7 @@ void *hlc_get_wrapper( hl_type *t ) {
 		chk |= TKIND[t->fun->args[3]->kind] << 12;
 		switch( chk ) {
 		case 21357: return wrap_ppip_p;
+		case 14184: return wrap_ppdd_v;
 		case 21096: return wrap_piip_v;
 		case 23400: return wrap_pppp_v;
 		case 4712: return wrap_piii_v;
@@ -557,6 +703,39 @@ void *hlc_get_wrapper( hl_type *t ) {
 		case 2396776: return wrap_piiiiii_v;
 		}
 		break;
+	case 8:
+		chk |= TKIND[t->fun->args[0]->kind] << 3;
+		chk |= TKIND[t->fun->args[1]->kind] << 6;
+		chk |= TKIND[t->fun->args[2]->kind] << 9;
+		chk |= TKIND[t->fun->args[3]->kind] << 12;
+		chk |= TKIND[t->fun->args[4]->kind] << 15;
+		chk |= TKIND[t->fun->args[5]->kind] << 18;
+		chk |= TKIND[t->fun->args[6]->kind] << 21;
+		chk |= TKIND[t->fun->args[7]->kind] << 24;
+		switch( chk ) {
+		case 95851112: return wrap_piiipppp_v;
+		case 19173992: return wrap_piiiiiii_v;
+		}
+		break;
+	case 9:
+		chk |= TKIND[t->fun->args[0]->kind] << 3;
+		chk |= TKIND[t->fun->args[1]->kind] << 6;
+		chk |= TKIND[t->fun->args[2]->kind] << 9;
+		chk |= TKIND[t->fun->args[3]->kind] << 12;
+		chk |= TKIND[t->fun->args[4]->kind] << 15;
+		chk |= TKIND[t->fun->args[5]->kind] << 18;
+		chk |= TKIND[t->fun->args[6]->kind] << 21;
+		chk |= TKIND[t->fun->args[7]->kind] << 24;
+		chk |= TKIND[t->fun->args[8]->kind] << 27;
+		switch( chk ) {
+		case 153391720: return wrap_piiiiiiii_v;
+		case 766808680: return wrap_piiiipppp_v;
+		case 153391976: return wrap_ppiiiiiii_v;
+		case 766940008: return wrap_ppiippppp_v;
+		}
+		break;
+	case 10:
+		hl_fatal("Too many arguments, TODO:use more bits");
 	}
 	return NULL;
 }

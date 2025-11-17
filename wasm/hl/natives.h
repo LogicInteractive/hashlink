@@ -3,9 +3,11 @@
 #define HL_NATIVES_H
 // Abstract decls
 typedef struct _hl_bytes_map hl_bytes_map;
+typedef struct _hl_lock hl_lock;
 typedef struct _hl_random hl_random;
 typedef struct _hl_symbol hl_symbol;
 
+#include <_std/String.h>
 #include <hl/natives.h>
 
 // Natives functions
@@ -26,6 +28,12 @@ HL_API void hl_bytes_fill(vbyte*,int,int,int);
 HL_API int hl_bytes_find(vbyte*,int,int,vbyte*,int,int);
 HL_API vdynamic* hl_call_method(vdynamic*,varray*);
 HL_API int hl_call_stack_raw(varray*);
+HL_API void hl_canvas_clear(String,int,int,int);
+HL_API void hl_canvas_draw_line(String,int,int,int,int,int,int,int,int,int);
+HL_API void hl_canvas_draw_text(String,String,int,int,int,int,int,int,int);
+HL_API void hl_canvas_fill_circle(String,int,int,int,int,int,int,int);
+HL_API void hl_canvas_fill_rect(String,int,int,int,int,int,int,int,int);
+HL_API void hl_canvas_init(String);
 HL_API int hl_date_new(int,int,int,int,int,int);
 HL_API vbyte* hl_date_to_string(int,int*);
 HL_API int hl_exception_stack_raw(varray*);
@@ -35,8 +43,19 @@ HL_API hl_bytes_map* hl_hballoc(void);
 HL_API void hl_hbset(hl_bytes_map*,vbyte*,vdynamic*);
 HL_API bool hl_is_prim_loaded(vdynamic*);
 HL_API vbyte* hl_itos(int,int*);
+HL_API hl_lock* hl_lock_create(void);
+HL_API void hl_lock_release(hl_lock*);
+HL_API bool hl_lock_wait(hl_lock*,vdynamic*);
 HL_API vdynamic* hl_make_closure(vdynamic*,vdynamic*);
 HL_API vdynamic* hl_make_var_args(vclosure*);
+HL_API double hl_math_abs(double);
+HL_API double hl_math_cos(double);
+HL_API int hl_math_floor(double);
+HL_API bool hl_math_isnan(double);
+HL_API double hl_math_sin(double);
+HL_API void hl_mutex_acquire(hl_mutex*);
+HL_API hl_mutex* hl_mutex_alloc(bool);
+HL_API void hl_mutex_release(hl_mutex*);
 HL_API vdynamic* hl_no_closure(vdynamic*);
 HL_API bool hl_obj_delete_field(vdynamic*,int);
 HL_API vdynamic* hl_obj_get_field(vdynamic*,int);
@@ -47,7 +66,9 @@ HL_API hl_random* hl_rnd_init_system(void);
 HL_API void hl_set_error_handler(vclosure*);
 HL_API bool hl_sys_is64(void);
 HL_API void hl_sys_print(vbyte*);
+HL_API double hl_sys_time(void);
 HL_API bool hl_sys_utf8_path(void);
+HL_API hl_thread* hl_thread_current(void);
 HL_API varray* hl_type_enum_fields(hl_type*);
 HL_API varray* hl_type_enum_values(hl_type*);
 HL_API vdynamic* hl_type_get_global(hl_type*);

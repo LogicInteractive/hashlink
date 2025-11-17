@@ -19,6 +19,7 @@ struct _haxe__iterators__$ArrayKeyValueIterator {
 };
 struct _haxe__iterators__ArrayKeyValueIterator {
 	hl_type *$type;
+	int current;
 	hl__types__ArrayDyn array;
 };
 #endif
