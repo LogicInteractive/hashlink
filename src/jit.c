@@ -3602,7 +3602,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		r->size = hl_type_size(r->t);
 		r->current = NULL;
 		r->stack.holds = NULL;
-		r->stack.id = i;
+		r->stack.id = (i < 10) ? (X19 + i) : -1; // Hybrid: X19-X28 for first 10 vregs
 		r->stack.kind = RSTACK;
 	}
 	size = 0;
