@@ -5926,8 +5926,22 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				unsigned int inst = (0x93407C00) | (arm_reg(rn) << 5) | arm_reg(rd);
 				B32(inst);
 			} else if (ra->t->kind == HF64 || ra->t->kind == HF32) {
-				// Float-to-int conversion requires FP registers
-				jit_error("OToInt: float conversion not yet implemented in ARM64");
+				// Float-to-int conversion
+				Arm64Reg rn_gen = GET_REG(ra);
+				bool float64 = (ra->t->kind == HF64);
+				bool int64 = (dst->t->kind == HI64);
+
+				// Move general register containing float bits to FPU register
+				// FMOV Vn, Xn  (move general to FPU register)
+				unsigned int sf = float64 ? 1 : 0;
+				unsigned int ftype = float64 ? 0x01 : 0x00;
+				unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+				                    (0x07 << 16) | (rn_gen << 5);
+				B32(inst);
+
+				// Convert using FCVTZS: FPU register -> integer register
+				Arm64Reg rd = GET_REG(dst);
+				arm_fcvtzs(ctx, rd, V0, int64, float64);
 			} else {
 				// Other cases: just move
 				Arm64Reg rd = GET_REG(dst);
@@ -6524,9 +6538,31 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case OFloat:
-		// Load float constant
-		// For now, not implemented - would need float literal loading
-		jit_error("Float constant loading not yet implemented in ARM64");
+		// Load float constant from module's float table
+		if (dst) {
+			double float_val = m->code->floats[o->p2];
+			bool float64 = (dst->t->kind == HF64);
+
+			if (float_val == 0.0) {
+				// Zero out FPU register using XOR equivalent
+				// For simplicity, just load zero bits
+				Arm64Reg rd = GET_REG(dst);
+				arm_movz(ctx, rd, 0, 0, true);
+			} else {
+				// Load float bits as integer, then move to FPU
+				uint64_t bits;
+				if (float64) {
+					bits = *(uint64_t*)&float_val;
+				} else {
+					float f32 = (float)float_val;
+					bits = *(uint32_t*)&f32;
+				}
+
+				// Load bits into general register
+				Arm64Reg rd = GET_REG(dst);
+				arm_load_imm64(ctx, rd, bits);
+			}
+		}
 		break;
 
 	case OToSFloat:
@@ -6553,27 +6589,23 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 
 	case OToUFloat:
-		{
-			// Convert unsigned int to float - call uint_to_double
-			if (dst && ra) {
-				vreg *arg = R(o->p2);
-				if (arg) {
-					Arm64Reg r0 = GET_REG(arg);
-					if (r0 != X0) {
-						arm_mov_reg(ctx, X0, r0, true);
-					}
-				}
-				// Load uint_to_double address
-				arm_load_imm64(ctx, X9, (uint64_t)uint_to_double);
-				// BLR X9
-				B32(0xd63f0120);
-				// Result would be in D0 (FPU), but since we don't have FPU support yet,
-				// just store X0 (incorrect but prevents crash)
-				Arm64Reg rd = GET_REG(dst);
-				if (rd != X0) {
-					arm_mov_reg(ctx, rd, X0, true);
-				}
-			}
+		// Convert unsigned integer to float
+		if (dst && ra) {
+			Arm64Reg rn = GET_REG(ra);
+			bool int64 = (ra->t->kind == HI64);
+			bool float64 = (dst->t->kind == HF64);
+
+			// Convert using UCVTF: integer register -> FPU register
+			arm_ucvtf(ctx, V0, rn, int64, float64);
+
+			// Move FPU result back to general register for storage
+			Arm64Reg rd = GET_REG(dst);
+			// FMOV Xd, Vn
+			unsigned int sf = float64 ? 1 : 0;
+			unsigned int ftype = float64 ? 0x01 : 0x00;
+			unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
+			                    (0x06 << 16) | arm_reg(rd);
+			B32(inst);
 		}
 		break;
 
@@ -7423,7 +7455,10 @@ static void arm_cmp_reg(jit_ctx *ctx, Arm64Reg rn, Arm64Reg rm, bool is64) {
 // Format: sf 1 1 100010 shift(2) imm12(12) Rn(5) Rd(5)
 static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64) {
 	if (!arm_fits_unsigned(imm12, 12)) {
-		ASSERT(20);
+		// Large immediate - load into temp register and use register CMP
+		arm_load_imm64(ctx, X9, imm12);
+		// CMP using register: SUBS XZR, rn, X9
+		arm_subs_reg(ctx, XZR, rn, X9, is64);
 		return;
 	}
 	unsigned int sf = is64 ? 1 : 0;
