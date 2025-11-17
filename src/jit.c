@@ -246,6 +246,9 @@ typedef enum {
 	_ARM_LAST = 0xFF
 } Arm64Reg;
 
+// SP is the stack pointer, which is register 31 in load/store contexts
+#define SP XZR
+
 // ARM64 SIMD/FP Registers (128-bit: V0-V31, 64-bit: D0-D31, 32-bit: S0-S31)
 // We'll primarily use V registers for consistency
 typedef enum {
@@ -5829,16 +5832,68 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					Arm64Reg rn = GET_REG(ra);
 
 					// LDR Xd, [Xn, #offset]
-					if (field_offset < 4096 * 8) {
+					if (field_offset >= 0 && field_offset < 4096 * 8) {
 						arm_ldr_imm(ctx, rd, rn, field_offset / 8, 3);  // size=3 for 64-bit
 					} else {
-						// Offset too large, use temp register
+						// Offset too large or negative, use temp register
 						Arm64Reg temp = X9;
 						arm_load_imm64(ctx, temp, field_offset);
 						arm_ldr_reg(ctx, rd, rn, temp, 3);
 					}
+				} else if (ra->t->kind == HVIRTUAL) {
+					// Virtual object field access
+					// Call appropriate hl_dyn_get* helper based on result type
+					Arm64Reg r_obj = GET_REG(ra);
+					int hashed_name = ra->t->virt->fields[o->p3].hashed_name;
+					void *helper_func = NULL;
+
+					// Select helper function based on destination type
+					switch (dst->t->kind) {
+					case HI32:
+					case HUI8:
+					case HUI16:
+					case HBOOL:
+						helper_func = hl_dyn_geti;
+						break;
+					case HI64:
+						helper_func = hl_dyn_geti64;
+						break;
+					case HF32:
+						helper_func = hl_dyn_getf;
+						break;
+					case HF64:
+						helper_func = hl_dyn_getd;
+						break;
+					default:
+						helper_func = hl_dyn_getp;
+						break;
+					}
+
+					// Set up arguments: X0 = object, X1 = hashed_name, X2 = type (for getp)
+					if (r_obj != X0) {
+						arm_mov_reg(ctx, X0, r_obj, true);
+					}
+
+					// X1 = hashed field name
+					arm_load_imm64(ctx, X1, hashed_name);
+
+					// X2 = destination type (only for getp)
+					if (helper_func == hl_dyn_getp) {
+						arm_load_imm64(ctx, X2, (uint64_t)dst->t);
+					}
+
+					// Call helper function
+					arm_load_imm64(ctx, X9, (uint64_t)helper_func);
+					arm_blr(ctx, X9);
+
+					// Store result
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
 				} else {
-					jit_error("OField: unsupported type");
+					// Other unsupported types (HDYNOBJ, etc.)
+					jit_error("OField: unsupported type (not HOBJ/HSTRUCT/HVIRTUAL)");
 				}
 			}
 			break;
@@ -5853,15 +5908,75 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					Arm64Reg rn = GET_REG(dst);     // object
 
 					// STR Xt, [Xn, #offset]
-					if (field_offset < 4096 * 8) {
+					if (field_offset >= 0 && field_offset < 4096 * 8) {
 						arm_str_imm(ctx, rt_reg, rn, field_offset / 8, 3);
 					} else {
 						Arm64Reg temp = X9;
 						arm_load_imm64(ctx, temp, field_offset);
 						arm_str_reg(ctx, rt_reg, rn, temp, 3);
 					}
+				} else if (dst->t->kind == HVIRTUAL) {
+					// Virtual object field set
+					// Call appropriate hl_dyn_set* helper based on value type
+					Arm64Reg r_obj = GET_REG(dst);
+					Arm64Reg r_value = GET_REG(rb);
+					int hashed_name = dst->t->virt->fields[o->p2].hashed_name;
+					void *helper_func = NULL;
+
+					// Select helper function based on value type
+					switch (rb->t->kind) {
+					case HI32:
+					case HUI8:
+					case HUI16:
+					case HBOOL:
+						helper_func = hl_dyn_seti;
+						break;
+					case HI64:
+						helper_func = hl_dyn_seti64;
+						break;
+					case HF32:
+						helper_func = hl_dyn_setf;
+						break;
+					case HF64:
+						helper_func = hl_dyn_setd;
+						break;
+					default:
+						helper_func = hl_dyn_setp;
+						break;
+					}
+
+					// Set up arguments: X0 = object, X1 = hashed_name, X2 = type/value, X3 = value (for seti)
+					if (r_obj != X0) {
+						arm_mov_reg(ctx, X0, r_obj, true);
+					}
+
+					// X1 = hashed field name
+					arm_load_imm64(ctx, X1, hashed_name);
+
+					if (helper_func == hl_dyn_seti) {
+						// seti needs: X2 = type, X3 = value
+						arm_load_imm64(ctx, X2, (uint64_t)rb->t);
+						if (r_value != X3) {
+							arm_mov_reg(ctx, X3, r_value, true);
+						}
+					} else if (helper_func == hl_dyn_setp) {
+						// setp needs: X2 = type, X3 = ptr
+						arm_load_imm64(ctx, X2, (uint64_t)rb->t);
+						if (r_value != X3) {
+							arm_mov_reg(ctx, X3, r_value, true);
+						}
+					} else {
+						// seti64/setf/setd need: X2 = value
+						if (r_value != X2) {
+							arm_mov_reg(ctx, X2, r_value, true);
+						}
+					}
+
+					// Call helper function
+					arm_load_imm64(ctx, X9, (uint64_t)helper_func);
+					arm_blr(ctx, X9);
 				} else {
-					jit_error("OSetField: unsupported type");
+					jit_error("OSetField: unsupported type (not HOBJ/HSTRUCT/HVIRTUAL)");
 				}
 			}
 			break;
@@ -5876,7 +5991,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					Arm64Reg rd = GET_REG(dst);
 					Arm64Reg r0 = GET_REG(r);
 
-					if (field_offset < 4096 * 8) {
+					if (field_offset >= 0 && field_offset < 4096 * 8) {
 						arm_ldr_imm(ctx, rd, r0, field_offset / 8, 3);
 					} else {
 						Arm64Reg temp = X9;
@@ -5897,7 +6012,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					Arm64Reg rt_reg = GET_REG(ra);  // value
 					Arm64Reg r0 = GET_REG(r);       // this
 
-					if (field_offset < 4096 * 8) {
+					if (field_offset >= 0 && field_offset < 4096 * 8) {
 						arm_str_imm(ctx, rt_reg, r0, field_offset / 8, 3);
 					} else {
 						Arm64Reg temp = X9;
@@ -6361,11 +6476,246 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 
 	case OCallMethod:
+		{
+			// Call method on object from first argument
+			// object->type->proto[method_index](args...)
+			vreg *obj = R(o->extra[0]);
+
+			if (obj->t->kind == HOBJ || obj->t->kind == HSTRUCT) {
+				Arm64Reg r_obj = GET_REG(obj);
+
+				// Read type from object (offset 0)
+				// LDR X9, [r_obj, #0]
+				arm_ldr_imm(ctx, X9, r_obj, 0, 3);
+
+				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
+				// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
+				arm_ldr_imm(ctx, X9, X9, 2, 3);
+
+				// Set up arguments from o->extra (object and additional args)
+				for (i = 0; i < o->p3 && i < 8; i++) {
+					vreg *arg = R(o->extra[i]);
+					Arm64Reg src = GET_REG(arg);
+					Arm64Reg dst_reg = X0 + i;
+
+					if (src != dst_reg) {
+						arm_mov_reg(ctx, dst_reg, src, true);
+					}
+				}
+
+				if (o->p3 > 8) {
+					jit_error("OCallMethod with >8 args not yet implemented");
+				}
+
+				// Load method pointer from proto[method_index]
+				// LDR X9, [X9, #(o->p2 * HL_WSIZE)]
+				if (o->p2 < 4096) {
+					arm_ldr_imm(ctx, X9, X9, o->p2, 3);
+				} else {
+					Arm64Reg temp = X10;
+					arm_load_imm64(ctx, temp, o->p2 * HL_WSIZE);
+					arm_ldr_reg(ctx, X9, X9, temp, 3);
+				}
+
+				// Call the method
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
+			} else {
+				jit_error("OCallMethod: unsupported object type");
+			}
+		}
+		break;
+
 	case OCallThis:
+		{
+			// Call method on "this" object (register 0)
+			// this->type->proto[method_index](this, args...)
+			vreg *r = R(0);  // "this" is always register 0
+			Arm64Reg r_this = GET_REG(r);
+
+			// Read type from this (offset 0)
+			// LDR X9, [r_this, #0]
+			arm_ldr_imm(ctx, X9, r_this, 0, 3);
+
+			// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
+			// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
+			arm_ldr_imm(ctx, X9, X9, 2, 3);
+
+			// Set up arguments: X0 = this, X1-X7 = extra args
+			if (r_this != X0) {
+				arm_mov_reg(ctx, X0, r_this, true);
+			}
+
+			// Move additional arguments to X1-X7
+			for (i = 0; i < o->p3 && i < 7; i++) {
+				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
+				Arm64Reg dst_reg = X1 + i;
+
+				if (src != dst_reg) {
+					arm_mov_reg(ctx, dst_reg, src, true);
+				}
+			}
+
+			if (o->p3 > 7) {
+				jit_error("OCallThis with >7 args not yet implemented");
+			}
+
+			// Load method pointer from proto[method_index]
+			// LDR X9, [X9, #(o->p2 * HL_WSIZE)]
+			// Scaled offset: (o->p2 * 8) / 8 = o->p2
+			if (o->p2 < 4096) {
+				arm_ldr_imm(ctx, X9, X9, o->p2, 3);
+			} else {
+				Arm64Reg temp = X10;
+				arm_load_imm64(ctx, temp, o->p2 * HL_WSIZE);
+				arm_ldr_reg(ctx, X9, X9, temp, 3);
+			}
+
+			// Call the method
+			arm_blr(ctx, X9);
+
+			// Store result if needed
+			if (dst && dst->t->kind != HVOID) {
+				Arm64Reg rd = GET_REG(dst);
+				if (rd != X0) {
+					arm_mov_reg(ctx, rd, X0, true);
+				}
+			}
+		}
+		break;
+
 	case OCallClosure:
-		// These require virtual dispatch and closure support
-		// TODO: Implement when closure infrastructure is ready
-		jit_error("Closures and virtual calls not yet implemented in ARM64");
+		// Call through closure: closure->fun(value?, args...)
+		if (ra->t->kind == HDYN) {
+			// Dynamic closure - call hl_dyn_call(closure, args[], nargs)
+			// Build array of vdynamic* on stack and call hl_dyn_call
+
+			// Allocate stack space for args array (aligned to 16)
+			int args_size = o->p3 * HL_WSIZE;
+			if (args_size & 15) args_size += 16 - (args_size & 15);
+
+			// SUB SP, SP, #args_size
+			arm_sub_imm(ctx, SP, SP, args_size / 8, true);  // Scaled by 8
+
+			// Store each argument into the array
+			for (i = 0; i < o->p3; i++) {
+				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
+				// STR src, [SP, #(i * 8)]
+				arm_str_imm(ctx, src, SP, i, 3);  // Scaled offset
+			}
+
+			// Set up call to hl_dyn_call(closure, args, nargs)
+			// X0 = closure
+			Arm64Reg r_closure = GET_REG(ra);
+			if (r_closure != X0) {
+				arm_mov_reg(ctx, X0, r_closure, true);
+			}
+
+			// X1 = args (SP)
+			arm_mov_reg(ctx, X1, SP, true);
+
+			// X2 = nargs
+			arm_movz(ctx, X2, o->p3, 0, true);
+
+			// Call hl_dyn_call
+			arm_load_imm64(ctx, X9, (uint64_t)hl_dyn_call);
+			arm_blr(ctx, X9);
+
+			// Restore stack
+			// ADD SP, SP, #args_size
+			arm_add_imm(ctx, SP, SP, args_size / 8, true);
+
+			// Store result if needed
+			if (dst && dst->t->kind != HVOID) {
+				Arm64Reg rd = GET_REG(dst);
+				if (rd != X0) {
+					arm_mov_reg(ctx, rd, X0, true);
+				}
+			}
+		} else {
+			// Regular closure: struct { fun, value, hasValue }
+			// if (closure->hasValue) call fun(value, args...) else call fun(args...)
+
+			Arm64Reg r_closure = GET_REG(ra);
+
+			// Load hasValue flag from closure (offset = HL_WSIZE * 2 = 16 bytes)
+			// For size=3 (64-bit), scaled offset = 16/8 = 2
+			arm_ldr_imm(ctx, X10, r_closure, 2, 3);
+
+			// Test if hasValue is non-zero
+			// CBZ X10, no_value_case
+			int no_value_jump = arm_do_cbz(ctx, X10, true);
+
+			// HAS VALUE CASE: Load value and pass as first argument
+			// Load closure->value (offset = HL_WSIZE = 8 bytes, scaled = 1)
+			arm_ldr_imm(ctx, X0, r_closure, 1, 3);
+
+			// Set up remaining arguments (shift by 1)
+			for (i = 0; i < o->p3; i++) {
+				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
+				Arm64Reg dst_reg = (i < 7) ? (X1 + i) : X9;  // X1-X7 for args 1-7
+
+				if (i < 7) {
+					if (src != dst_reg) {
+						arm_mov_reg(ctx, dst_reg, src, true);
+					}
+				} else {
+					// Stack args not yet implemented
+					jit_error("Closures with >7 args not yet implemented");
+				}
+			}
+
+			// Load function pointer and call
+			// closure->fun is at offset 0
+			arm_ldr_imm(ctx, X9, r_closure, 0, 3);
+			arm_blr(ctx, X9);
+
+			// Jump over no-value case
+			int end_jump = arm_do_jump(ctx);
+
+			// NO VALUE CASE: Just pass arguments normally
+			arm_patch_cbz(ctx, no_value_jump, ARM_BUF_POS());
+
+			// Set up arguments
+			for (i = 0; i < o->p3; i++) {
+				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
+				Arm64Reg dst_reg = (i < 8) ? (X0 + i) : X9;
+
+				if (i < 8) {
+					if (src != dst_reg) {
+						arm_mov_reg(ctx, dst_reg, src, true);
+					}
+				} else {
+					jit_error("Closures with >8 args not yet implemented");
+				}
+			}
+
+			// Load function pointer and call
+			arm_ldr_imm(ctx, X9, r_closure, 0, 3);
+			arm_blr(ctx, X9);
+
+			// Patch end jump
+			arm_patch_jump(ctx, end_jump);
+
+			// Store result if needed
+			if (dst && dst->t->kind != HVOID) {
+				Arm64Reg rd = GET_REG(dst);
+				if (rd != X0) {
+					arm_mov_reg(ctx, rd, X0, true);
+				}
+			}
+		}
 		break;
 
 	// =====================================================================
@@ -6498,7 +6848,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// STR/STRB/STRH depending on size
 				if (size == 8) {
 					// 64-bit store
-					if (offset < 4096 * 8) {
+					if (offset >= 0 && offset < 4096 * 8) {
 						arm_str_imm(ctx, r_value, r_enum, offset / 8, 3);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
@@ -6506,7 +6856,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					}
 				} else if (size == 4) {
 					// 32-bit store
-					if (offset < 4096 * 4) {
+					if (offset >= 0 && offset < 4096 * 4) {
 						arm_str_imm(ctx, r_value, r_enum, offset / 4, 2);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
@@ -6514,7 +6864,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					}
 				} else if (size == 2) {
 					// 16-bit store
-					if (offset < 4096 * 2) {
+					if (offset >= 0 && offset < 4096 * 2) {
 						arm_str_imm(ctx, r_value, r_enum, offset / 2, 1);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
@@ -6522,7 +6872,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					}
 				} else {
 					// 8-bit store
-					if (offset < 4096) {
+					if (offset >= 0 && offset < 4096) {
 						arm_str_imm(ctx, r_value, r_enum, offset, 0);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
