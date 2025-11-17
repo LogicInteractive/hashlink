@@ -3440,64 +3440,64 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// Convert static function offsets to absolute addresses
 	if( !ctx->static_function_offset ) {
-		int i;
+			int i;
 		ctx->static_function_offset = true;
 		for(i=0;i<(int)(sizeof(ctx->static_functions)/sizeof(void*));i++)
 			ctx->static_functions[i] = (void*)(code + (int)(int_val)ctx->static_functions[i]);
-	}
+		}
 
 	// Patch calls
 	jlist *c = ctx->calls;
 	while( c ) {
-		void *fabs;
+			void *fabs;
 		if( c->target < 0 ) {
 			// Static function (error handlers)
 			fabs = ctx->static_functions[-c->target-1];
 		} else {
 			// Module function
-			fabs = m->functions_ptrs[c->target];
-			if( fabs == NULL ) {
+					fabs = m->functions_ptrs[c->target];
+					if( fabs == NULL ) {
 				// TODO: Handle previous module lookups
-				return NULL;
+							return NULL;
 			} else {
 				// Convert relative offset to absolute address
 				fabs = (unsigned char*)code + (int)(int_val)fabs;
-			}
+						}
 		}
 
 		// Patch the BL instruction
 		// BL encoding: imm26 is signed offset / 4
-		unsigned int *instr = (unsigned int*)(code + c->pos);
-		int_val delta = (int_val)fabs - (int_val)(code + c->pos);
-		int offset = (int)(delta / 4);  // Offset in instructions
-
+			unsigned int *instr = (unsigned int*)(code + c->pos);
+				int_val delta = (int_val)fabs - (int_val)(code + c->pos);
+			int offset = (int)(delta / 4);  // Offset in instructions
+	
 		// Check if offset fits in 26 bits
 		if (offset < -(1<<25) || offset >= (1<<25)) {
 			printf("Target code too far to rebase\n");
 			return NULL;
 		}
 
-		// Update BL instruction: keep top 6 bits, replace bottom 26 bits
+			// Update BL instruction: keep top 6 bits, replace bottom 26 bits
 		*instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
-
+	
 		c = c->next;
-	}
+		}
 
 	// Patch jumps (conditional branches, etc.)
 	jlist *j = ctx->jumps;
 	while( j ) {
-		int target_pos = ctx->opsPos[j->target];
-		if( target_pos == 0 && j->target != 0 ) {
+			int target_pos = ctx->opsPos[j->target];
+			if( target_pos == 0 && j->target != 0 ) {
 			printf("Invalid jump target\n");
 			return NULL;
 		}
 
 		// Call the appropriate ARM64 patch function
 		// Note: The instruction type was stored at the jump position
-		arm_patch_jump(ctx, j->pos);
-
+			arm_patch_jump(ctx, j->pos);
+	
 		j = j->next;
-	}
+		}
 
 	// Patch closures
 	vclosure *c_closure = ctx->closure_list;
@@ -3515,6 +3515,10 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		c_closure->value = NULL;
 		c_closure = next;
 	}
+
+	// ARM64 CRITICAL: Flush instruction cache
+	// Without this, the CPU may execute stale cached instructions
+	__builtin___clear_cache((char*)code, (char*)code + BUF_POS());
 
 	return code;
 }
