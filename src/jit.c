@@ -3447,28 +3447,40 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		}
 
 	// Patch calls
+	printf("[PATCH] Starting call patching, code base=%p\n", (void*)code);
 	jlist *c = ctx->calls;
+	int patch_count = 0;
 	while( c ) {
 			void *fabs;
 		if( c->target < 0 ) {
 			// Static function (error handlers)
 			fabs = ctx->static_functions[-c->target-1];
+			printf("[PATCH] Call %d: static function %d at pos=%d, fabs=%p\n",
+			       patch_count, -c->target-1, c->pos, fabs);
 		} else {
 			// Module function
 			fabs = m->functions_ptrs[c->target];
+			printf("[PATCH] Call %d: function %d at pos=%d, offset=%p\n",
+			       patch_count, c->target, c->pos, fabs);
 			if( fabs == NULL ) {
+				printf("[PATCH] ERROR: Function %d pointer is NULL!\n", c->target);
 				// TODO: Handle previous module lookups
 				return NULL;
 			}
 			// At this point, fabs is a relative offset - convert to absolute
 			fabs = (unsigned char*)code + (int)(int_val)fabs;
+			printf("[PATCH]   -> absolute address=%p\n", fabs);
 		}
 
 		// Patch the BL instruction
 		// BL encoding: imm26 is signed offset / 4
 			unsigned int *instr = (unsigned int*)(code + c->pos);
+			printf("[PATCH]   Instruction at %p before patch: 0x%08x\n",
+			       (void*)instr, *instr);
 				int_val delta = (int_val)fabs - (int_val)(code + c->pos);
 			int offset = (int)(delta / 4);  // Offset in instructions
+		printf("[PATCH]   delta=%ld, offset=%d\n", delta, offset);
+		patch_count++;
 	
 		// Check if offset fits in 26 bits
 		if (offset < -(1<<25) || offset >= (1<<25)) {
@@ -4261,10 +4273,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				// Native function - use BLR with absolute address
 				void *fptr = ctx->m->functions_ptrs[o->p2];
+				printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
+				if (fptr == NULL) {
+					printf("[OCall0] ERROR: Native function pointer is NULL!\n");
+				}
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
 				// JIT function - use BL with staging for patching
+				printf("[OCall0] JIT function %d: will be patched\n", o->p2);
 				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
 				j->pos = BUF_POS();
 				j->target = o->p2;
@@ -4292,9 +4309,14 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
+				printf("[OCall1] Native function %d: fptr=%p\n", o->p2, fptr);
+				if (fptr == NULL) {
+					printf("[OCall1] ERROR: Native function pointer is NULL!\n");
+				}
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
+				printf("[OCall1] JIT function %d: will be patched\n", o->p2);
 				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
 				j->pos = BUF_POS();
 				j->target = o->p2;
@@ -4570,9 +4592,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			hl_module *m = ctx->m;
 			void *addr = m->globals_data + m->globals_indexes[o->p2];
 			hl_type *t = m->code->globals[o->p2];
+
+			// DEBUG: Check all globals at JIT compile time
+			printf("[OGetGlobal] global %d → type.kind=%d", o->p2, t->kind);
 			if (t->kind == HFUN) {
-				printf("[OGetGlobal] Loading HFUN global %d from addr %p\n", o->p2, addr);
+				void *current_value = *(void**)addr;
+				printf(", HFUN ptr = %p", current_value);
 			}
+			printf("\n");
+
 			// Load global address into X10
 			arm_load_imm64(ctx, X10, (uint64_t)addr);
 			// Load value from [X10]
@@ -5038,6 +5066,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OCallMethod:
 		{
+			printf("[OCallMethod] method_index=%d, nargs=%d\n", o->p2, o->p3);
 			// Call method on object from first argument
 			// object->type->proto[method_index](args...)
 			vreg *obj = R(o->extra[0]);
@@ -5090,6 +5119,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OCallThis:
 		{
+			printf("[OCallThis] method_index=%d, nargs=%d\n", o->p2, o->p3);
 			// Call method on "this" object (register 0)
 			// this->type->proto[method_index](this, args...)
 			vreg *r = R(0);  // "this" is always register 0
@@ -5138,6 +5168,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 
 	case OCallClosure:
+		printf("[OCallClosure] closure_type=%d, nargs=%d\n", ra->t->kind, o->p3);
 		// Call through closure: closure->fun(value?, args...)
 		if (ra->t->kind == HDYN) {
 			// Dynamic closure - call hl_dyn_call(closure, args[], nargs)
@@ -5170,6 +5201,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_movz(ctx, X2, o->p3, 0, true);
 
 			// Call hl_dyn_call
+			printf("[OCallClosure] About to call hl_dyn_call at %p\n", (void*)hl_dyn_call);
 			arm_load_imm64(ctx, X9, (uint64_t)hl_dyn_call);
 			arm_blr(ctx, X9);
 
@@ -5222,7 +5254,31 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Offset 0 = t, Offset 8 = fun
 			// For scaled offset with size=3 (64-bit): offset_bytes / 8 = 8 / 8 = 1
 			arm_ldr_imm(ctx, X9, X11, 1, 3);
+
+			// DEBUG: Check if function pointer is NULL
+			// CBZ X9, error_label
+			int null_check_jump = arm_do_cbz(ctx, X9, true);
+
+			// Normal case: call the function
 			arm_blr(ctx, X9);
+
+			// Jump over error handler
+			int after_error_jump = arm_do_jump(ctx);
+
+			// Error handler: function pointer was NULL
+			arm_patch_cbz(ctx, null_check_jump, ARM_BUF_POS());
+			// Load error message and call printf
+			static char null_fn_msg[] = "ERROR: OCallClosure hasValue path - closure->fun is NULL!\n";
+			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg);
+			arm_load_imm64(ctx, X9, (uint64_t)&printf);
+			arm_blr(ctx, X9);
+			// Exit
+			arm_movz(ctx, X0, 1, 0, true);  // exit code 1
+			arm_load_imm64(ctx, X9, (uint64_t)&exit);
+			arm_blr(ctx, X9);
+
+			// Patch the after-error jump to skip error handler
+			arm_patch_jump(ctx, after_error_jump);
 
 			// Jump over no-value case
 			int end_jump = arm_do_jump(ctx);
@@ -5245,7 +5301,29 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Load function pointer and call
 			// closure->fun is at offset HL_WSIZE (scaled offset = 1)
 			arm_ldr_imm(ctx, X9, X11, 1, 3);
+
+			// DEBUG: Check if function pointer is NULL
+			int null_check_jump2 = arm_do_cbz(ctx, X9, true);
+
+			// Normal case: call the function
 			arm_blr(ctx, X9);
+
+			// Jump over error handler
+			int after_error_jump2 = arm_do_jump(ctx);
+
+			// Error handler: function pointer was NULL
+			arm_patch_cbz(ctx, null_check_jump2, ARM_BUF_POS());
+			static char null_fn_msg2[] = "ERROR: OCallClosure no-value path - closure->fun is NULL!\n";
+			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg2);
+			arm_load_imm64(ctx, X9, (uint64_t)&printf);
+			arm_blr(ctx, X9);
+			// Exit
+			arm_movz(ctx, X0, 1, 0, true);
+			arm_load_imm64(ctx, X9, (uint64_t)&exit);
+			arm_blr(ctx, X9);
+
+			// Patch the after-error jump
+			arm_patch_jump(ctx, after_error_jump2);
 
 			// Patch end jump
 			arm_patch_jump(ctx, end_jump);
@@ -6884,7 +6962,11 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 	// mov x29, sp (set frame pointer)
 	// CRITICAL: Must use ADD, not ORR-based mov_reg!
 	// In ADD, reg 31 = SP; in ORR, reg 31 = XZR (zero)
+	int pos_before = ARM_BUF_POS();
 	arm_add_imm(ctx, X29, XZR, 0, true);  // ADD X29, SP, #0
+	int pos_after = ARM_BUF_POS();
+	unsigned int *instr_ptr = (unsigned int*)(ctx->startBuf + pos_before);
+	printf("[PROLOGUE] MOV X29, SP instruction at offset %d: 0x%08x\n", pos_before, *instr_ptr);
 }
 
 // Generate function epilogue:
