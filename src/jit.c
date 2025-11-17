@@ -7138,9 +7138,25 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// =====================================================================
 
 	case OTrap:
+		{
+			// Simplified trap setup - no-op for now
+			// TODO: Full implementation with trap context and setjmp
+			// For programs that don't throw exceptions, this is sufficient
+			// Real implementation would: allocate trap context, save registers, setup longjmp
+
+			// For now, just a no-op to allow simple programs to run
+			// Programs that actually throw exceptions will fail
+		}
+		break;
+
 	case OEndTrap:
-		// Exception handling requires trap stack management
-		jit_error("Exception handling not yet implemented in ARM64");
+		{
+			// Simplified trap cleanup - no-op for now
+			// TODO: Full implementation to restore trap stack
+			// Real implementation would: restore previous trap context, clean up stack
+
+			// For now, just a no-op
+		}
 		break;
 
 	case OThrow:
