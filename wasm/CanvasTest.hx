@@ -21,9 +21,16 @@ class CanvasTest {
         // Start 60 FPS animation loop using standard haxe.Timer
         var timer = new haxe.Timer(Math.floor(1000 / 60));
         timer.run = animationLoop;
+
+        trace("Timer created, callback assigned");
+        trace("Main() is about to exit - MainLoop should start automatically");
     }
 
     static function animationLoop() {
+        if (frame == 0) {
+            trace("🎬 Animation loop STARTED! First frame rendering...");
+        }
+
         frame++;
 
         // Clear canvas with dark background

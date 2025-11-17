@@ -57,12 +57,15 @@ static void mainloop_tick_callback() {
 // Start the main loop automatically (called after main())
 HL_PRIM void hl_mainloop_start() {
     if (mainloop_running) {
+        EM_ASM({ console.log("⚠️  MainLoop already running"); });
         return;  // Already running
     }
 
+    EM_ASM({ console.log("▶️  Starting MainLoop at 60 FPS"); });
     mainloop_running = true;
     // Run at 60 FPS to process events promptly
     emscripten_set_main_loop(mainloop_tick_callback, 60, 1);
+    EM_ASM({ console.log("✓ emscripten_set_main_loop called"); });
 }
 
 // Stop the main loop
@@ -78,9 +81,12 @@ extern bool haxe_MainLoop_hasEvents() __attribute__((weak));
 HL_PRIM bool hl_mainloop_has_events() {
     // If haxe.MainLoop wasn't compiled in (no timers used), return false
     if (haxe_MainLoop_hasEvents == NULL) {
+        EM_ASM({ console.log("❌ haxe_MainLoop_hasEvents is NULL - no timers"); });
         return false;
     }
-    return haxe_MainLoop_hasEvents();
+    bool has_events = haxe_MainLoop_hasEvents();
+    EM_ASM({ console.log("🔍 Checking for MainLoop events: " + ($0 ? "YES" : "NO")); }, has_events);
+    return has_events;
 }
 
 DEFINE_PRIM(_VOID, mainloop_start, _NO_ARG);
