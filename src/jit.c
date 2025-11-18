@@ -3662,6 +3662,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	ctx->totalRegsSize = size;
 	jit_buf(ctx);
 	ctx->functionPos = BUF_POS();
+
+#ifdef HL_JIT_ARM64
+	// CRITICAL FIX: Set function pointer EARLY for eager JIT compilation
+	// This allows recursive calls and forward calls to see this function's address
+	// Even though the function body isn't generated yet, the address is valid
+	m->functions_ptrs[f->findex] = (void*)(int_val)BUF_POS();
+	printf("[JIT] Function %d assigned address at offset 0x%x\n", f->findex, BUF_POS());
+#endif
+
 	// make sure currentPos is > 0 before any reg allocations happen
 	// otherwise `alloc_reg` thinks that all registers are locked
 	ctx->currentPos = 1;
@@ -4279,20 +4288,41 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// Native function - use BLR with absolute address
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
-				if (fptr == NULL) {
-					printf("[OCall0] ERROR: Native function pointer is NULL!\n");
-				}
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
-				// JIT function - use BL with staging for patching
-				printf("[OCall0] JIT function %d: will be patched\n", o->p2);
-				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-				j->pos = BUF_POS();
-				j->target = o->p2;
-				j->next = ctx->calls;
-				ctx->calls = j;
-				B32(0x94000000);  // BL +0
+				// JIT function - EAGER JIT + direct BL call
+				printf("[OCall0] JIT function %d: eager JIT\n", o->p2);
+
+				// Eagerly JIT the callee if not compiled yet
+				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					printf("[OCall0] Eagerly JITing function %d\n", o->p2);
+					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					hl_jit_function(ctx, ctx->m, target_f);
+				}
+
+				// Get target address (now guaranteed to be non-NULL)
+				void *target_addr = ctx->m->functions_ptrs[o->p2];
+
+				// Calculate offset for direct BL
+				int_val call_site = (int_val)(ctx->startBuf + BUF_POS());
+				int_val delta = (int_val)target_addr - call_site;
+
+				printf("[OCall0] Direct BL: target=%p, call_site=offset 0x%x, delta=%ld\n",
+				       target_addr, BUF_POS(), delta);
+
+				// Check if offset fits in 26-bit signed immediate (±128 MB range)
+				if (delta >= -134217728LL && delta < 134217728LL) {
+					// Emit direct BL instruction
+					int offset = (int)(delta / 4);
+					unsigned int bl_instr = 0x94000000 | (offset & 0x03FFFFFF);
+					B32(bl_instr);
+				} else {
+					// Fall back to indirect call if target is too far
+					printf("[OCall0] WARNING: Target too far for BL, using BLR\n");
+					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
+					arm_blr(ctx, X9);
+				}
 			}
 
 			// Store result if needed
@@ -4314,20 +4344,23 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
-				printf("[OCall1] Native function %d: fptr=%p\n", o->p2, fptr);
-				if (fptr == NULL) {
-					printf("[OCall1] ERROR: Native function pointer is NULL!\n");
-				}
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
-				printf("[OCall1] JIT function %d: will be patched\n", o->p2);
-				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-				j->pos = BUF_POS();
-				j->target = o->p2;
-				j->next = ctx->calls;
-				ctx->calls = j;
-				B32(0x94000000);  // BL +0
+				// JIT function - EAGER JIT + direct BL
+				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					hl_jit_function(ctx, ctx->m, target_f);
+				}
+				void *target_addr = ctx->m->functions_ptrs[o->p2];
+				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+				if (delta >= -134217728LL && delta < 134217728LL) {
+					int offset = (int)(delta / 4);
+					B32(0x94000000 | (offset & 0x03FFFFFF));
+				} else {
+					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
+					arm_blr(ctx, X9);
+				}
 			}
 
 			if (dst && dst->t->kind != HVOID) {
@@ -4351,12 +4384,20 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
-				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-				j->pos = BUF_POS();
-				j->target = o->p2;
-				j->next = ctx->calls;
-				ctx->calls = j;
-				B32(0x94000000);
+				// JIT function - EAGER JIT + direct BL
+				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					hl_jit_function(ctx, ctx->m, target_f);
+				}
+				void *target_addr = ctx->m->functions_ptrs[o->p2];
+				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+				if (delta >= -134217728LL && delta < 134217728LL) {
+					int offset = (int)(delta / 4);
+					B32(0x94000000 | (offset & 0x03FFFFFF));
+				} else {
+					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
+					arm_blr(ctx, X9);
+				}
 			}
 
 			if (dst && dst->t->kind != HVOID) {
@@ -4382,12 +4423,20 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
-				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-				j->pos = BUF_POS();
-				j->target = o->p2;
-				j->next = ctx->calls;
-				ctx->calls = j;
-				B32(0x94000000);
+				// JIT function - EAGER JIT + direct BL
+				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					hl_jit_function(ctx, ctx->m, target_f);
+				}
+				void *target_addr = ctx->m->functions_ptrs[o->p2];
+				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+				if (delta >= -134217728LL && delta < 134217728LL) {
+					int offset = (int)(delta / 4);
+					B32(0x94000000 | (offset & 0x03FFFFFF));
+				} else {
+					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
+					arm_blr(ctx, X9);
+				}
 			}
 
 			if (dst && dst->t->kind != HVOID) {
@@ -4415,12 +4464,20 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
-				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-				j->pos = BUF_POS();
-				j->target = o->p2;
-				j->next = ctx->calls;
-				ctx->calls = j;
-				B32(0x94000000);
+				// JIT function - EAGER JIT + direct BL
+				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					hl_jit_function(ctx, ctx->m, target_f);
+				}
+				void *target_addr = ctx->m->functions_ptrs[o->p2];
+				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+				if (delta >= -134217728LL && delta < 134217728LL) {
+					int offset = (int)(delta / 4);
+					B32(0x94000000 | (offset & 0x03FFFFFF));
+				} else {
+					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
+					arm_blr(ctx, X9);
+				}
 			}
 
 			if (dst && dst->t->kind != HVOID) {
@@ -5055,12 +5112,20 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
-				jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-				j->pos = BUF_POS();
-				j->target = o->p2;
-				j->next = ctx->calls;
-				ctx->calls = j;
-				B32(0x94000000);
+				// JIT function - EAGER JIT + direct BL
+				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					hl_jit_function(ctx, ctx->m, target_f);
+				}
+				void *target_addr = ctx->m->functions_ptrs[o->p2];
+				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+				if (delta >= -134217728LL && delta < 134217728LL) {
+					int offset = (int)(delta / 4);
+					B32(0x94000000 | (offset & 0x03FFFFFF));
+				} else {
+					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
+					arm_blr(ctx, X9);
+				}
 			}
 
 			if (dst && dst->t->kind != HVOID) {
