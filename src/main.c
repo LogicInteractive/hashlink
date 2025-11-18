@@ -323,6 +323,8 @@ int main(int argc, pchar *argv[]) {
 	hl_main_t main_func = (hl_main_t)cl.fun;
 	void *module_ptr = ctx.m;
 	isExc = 0;
+	printf("[MAIN] About to BLR to %p with arg %p\n", (void*)main_func, module_ptr);
+	fflush(stdout);
 	__asm__ volatile (
 		"mov x0, %[mod]\n\t"      // Pass module pointer as first arg
 		"blr %[func]\n\t"         // Branch with link - sets LR correctly
@@ -330,6 +332,8 @@ int main(int argc, pchar *argv[]) {
 		: [func] "r" (main_func), [mod] "r" (module_ptr)
 		: "x0","x1","x2","x3","x4","x5","x6","x7","x8","x9","x10","x11","x12","x13","x14","x15","x16","x17","x30","memory"
 	);
+	printf("[MAIN] BLR returned!\n");
+	fflush(stdout);
 	ctx.ret = NULL;  // Entry point doesn't return a value
 #else
 	ctx.ret = hl_dyn_call_safe(&cl,NULL,0,&isExc);
