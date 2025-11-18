@@ -302,7 +302,11 @@ int main(int argc, pchar *argv[]) {
 	hl_code_free(ctx.code);
 	setup_handler();
 	hl_profile_setup(profile_count);
+	printf("[MAIN] About to call entry point %d at address %p\n", ctx.m->code->entrypoint, cl.fun);
+	fflush(stdout);
 	ctx.ret = hl_dyn_call_safe(&cl,NULL,0,&isExc);
+	printf("[MAIN] Entry point returned!\n");
+	fflush(stdout);
 	hl_profile_end();
 	if( isExc ) {
 		hl_print_uncaught_exception(ctx.ret);

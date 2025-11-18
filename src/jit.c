@@ -2614,6 +2614,9 @@ void hl_jit_free( jit_ctx *ctx, h_bool can_reset ) {
 static void *call_jit_c2hl = NULL;
 static void *call_jit_hl2c = NULL;
 
+// External HL runtime functions
+HL_PRIM vdynamic *hl_type_get_global( hl_type *t );
+
 // Forward declarations for x86
 #ifndef HL_JIT_ARM64
 static void *callback_c2hl( void *_f, hl_type *t, void **args, vdynamic *ret );
@@ -3866,7 +3869,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// This allows recursive calls and forward calls to see this function's address
 	// Even though the function body isn't generated yet, the address is valid
 	m->functions_ptrs[f->findex] = (void*)(int_val)BUF_POS();
-	printf("[JIT] Function %d assigned address at offset 0x%x\n", f->findex, BUF_POS());
+	// printf("[JIT] Function %d assigned address at offset 0x%x\n", f->findex, BUF_POS());
 #endif
 
 	// make sure currentPos is > 0 before any reg allocations happen
@@ -4472,9 +4475,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Load return value into X0
 			LOAD_VREG(X0, dst);
 		}
-		// Restore frame and return (must match prologue framesize)
+		// Restore frame and return (arm_epilogue includes RET instruction)
 		arm_epilogue(ctx, ctx->totalRegsSize + 16);
-		arm_ret(ctx, X30);
 		break;
 	case OCall0:
 		// Call function with 0 arguments
@@ -4485,16 +4487,16 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				// Native function - use BLR with absolute address
 				void *fptr = ctx->m->functions_ptrs[o->p2];
-				printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
+				// printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
 			} else {
 				// JIT function - EAGER JIT + direct BL call
-				printf("[OCall0] JIT function %d: eager JIT\n", o->p2);
+				// printf("[OCall0] JIT function %d: eager JIT\n", o->p2);
 
 				// Eagerly JIT the callee if not compiled yet
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					printf("[OCall0] Eagerly JITing function %d\n", o->p2);
+					// printf("[OCall0] Eagerly JITing function %d\n", o->p2);
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
@@ -4505,8 +4507,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				int_val call_site_offset = BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
-				printf("[OCall0] Direct BL: target_offset=0x%lx, call_site_offset=0x%x, delta=%ld\n",
-				       target_offset, call_site_offset, delta);
+				// printf("[OCall0] Direct BL: target_offset=0x%lx, call_site_offset=0x%x, delta=%ld\n",
+				//        target_offset, call_site_offset, delta);
 
 				// Check if offset fits in 26-bit signed immediate (±128 MB range)
 				if (delta >= -134217728LL && delta < 134217728LL) {
@@ -4873,25 +4875,41 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OGetGlobal:
 		// dst = global[p2]
 		{
+			int gindex = o->p2;
 			hl_module *m = ctx->m;
-			void *addr = m->globals_data + m->globals_indexes[o->p2];
-			hl_type *t = m->code->globals[o->p2];
+			hl_type *gtype = m->code->globals[gindex];
+			void *gaddr = (void*)(m->globals_data + m->globals_indexes[gindex]);
 
-			// DEBUG: Check all globals at JIT compile time
-			printf("[OGetGlobal] global %d → type.kind=%d", o->p2, t->kind);
-			if (t->kind == HFUN) {
-				void *current_value = *(void**)addr;
-				printf(", HFUN ptr = %p", current_value);
-			}
-			printf("\n");
+			// fprintf(stderr, "[OGetGlobal COMPILE] global=%d, type.kind=%d\n", gindex, gtype->kind);
+			// fflush(stderr);
 
-			// Load global address into X10
-			arm_load_imm64(ctx, X10, (uint64_t)addr);
-			// Load value from [X10]
-			arm_ldr_imm(ctx, X11, X10, 0, 3);  // 64-bit load
-			// Store to destination
-			if (dst) {
-				STORE_VREG(X11, dst);
+			// Simple, direct-load types (primitives, enums, etc.)
+			if (gtype->kind <= HLAST &&
+			    gtype->kind != HOBJ &&
+			    gtype->kind != HDYN &&
+			    gtype->kind != HREF &&
+			    gtype->kind != HNULL &&
+			    gtype->kind != HMETHOD) {
+
+				// fprintf(stderr, "[OGetGlobal] Simple type %d → direct load\n", gtype->kind);
+				// fflush(stderr);
+				arm_load_imm64(ctx, X10, (uint64_t)gaddr);
+				arm_ldr_imm(ctx, X10, X10, 0, 3);   // 64-bit load
+				if (dst) {
+					STORE_VREG(X10, dst);
+				}
+
+			} else {
+				// Complex types: HOBJ (11), HDYN, HREF, HNULL<T>, HMETHOD
+				// hl_type_get_global returns the final vdynamic* value directly in X0
+				// fprintf(stderr, "[OGetGlobal] Complex type %d → hl_type_get_global\n", gtype->kind);
+				// fflush(stderr);
+				arm_load_imm64(ctx, X0, (uint64_t)gtype);                // arg0 = type*
+				arm_load_imm64(ctx, X9, (uint64_t)hl_type_get_global);
+				arm_blr(ctx, X9);
+				if (dst) {
+					STORE_VREG(X0, dst);   // NO EXTRA LDR! Return value is already the object
+				}
 			}
 		}
 		break;
@@ -5377,8 +5395,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				jit_error("OCallMethod: NULL type");
 			}
 
-			printf("[OCallMethod] type=%d, method_index=%d, nargs=%d\n",
-			       obj->t->kind, o->p2, o->p3);
+			// printf("[OCallMethod] type=%d, method_index=%d, nargs=%d\n",
+			//        obj->t->kind, o->p2, o->p3);
 
 			// Get function index from proto array
 			int findex = -1;
@@ -5397,8 +5415,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 						for (int pi = 0; pi < search_type->obj->nproto; pi++) {
 							if (search_type->obj->proto[pi].pindex == o->p2) {
 								findex = search_type->obj->proto[pi].findex;
-								printf("[OCallMethod] Found method %d in type proto[%d], findex=%d\n",
-								       o->p2, pi, findex);
+								// printf("[OCallMethod] Found method %d in type proto[%d], findex=%d\n",
+								//        o->p2, pi, findex);
 								break;
 							}
 						}
@@ -5414,23 +5432,23 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					       o->p2);
 					jit_error("OCallMethod: method pindex not found");
 				}
-				printf("[OCallMethod] findex=%d\n", findex);
+				// printf("[OCallMethod] findex=%d\n", findex);
 
 				// Check if function is already JITed
 				if (m->functions_ptrs[findex] == NULL) {
 					// Eager JIT: compile the function now
-					printf("[OCallMethod] Eagerly JITing function %d\n", findex);
+					// printf("[OCallMethod] Eagerly JITing function %d\n", findex);
 					hl_function *target_f = m->code->functions + m->functions_indexes[findex];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
 
 				// Get function pointer from module
 				method_ptr = m->functions_ptrs[findex];
-				printf("[OCallMethod] Resolved method_ptr=%p\n", method_ptr);
+				// printf("[OCallMethod] Resolved method_ptr=%p\n", method_ptr);
 			} else {
 				// Non-object types (primitives, nullable, etc) - use runtime dispatch
 				// Similar to OCallThis, read type from object at runtime and dispatch dynamically
-				printf("[OCallMethod] Non-object type %d - using runtime dispatch\n", obj->t->kind);
+				// printf("[OCallMethod] Non-object type %d - using runtime dispatch\n", obj->t->kind);
 				findex = -2; // Special marker for runtime dispatch
 				method_ptr = NULL; // Will be loaded at runtime
 			}
@@ -5450,7 +5468,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (findex == -2) {
 				// Runtime dispatch: read type from object, then proto[method_index]
 				// obj is in X0 (first argument)
-				printf("[OCallMethod] Runtime dispatch: method_index=%d\n", o->p2);
+				// printf("[OCallMethod] Runtime dispatch: method_index=%d\n", o->p2);
 				// Read type from object (offset 0)
 				arm_ldr_imm(ctx, X9, X0, 0, 3);  // X9 = obj->type
 				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
@@ -5464,12 +5482,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					arm_ldr_reg(ctx, X9, X9, X11, 3);
 				}
 				// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
-				printf("[OCallMethod] Runtime dispatch generated (proto has absolute addresses)\n");
+				// printf("[OCallMethod] Runtime dispatch generated (proto has absolute addresses)\n");
 			} else {
 				// Compile-time known method - load function pointer at RUNTIME
 				// NOTE: At JIT time, m->functions_ptrs contains OFFSETS, not absolute addresses!
 				// module.c converts them AFTER hl_jit_code returns, so we must load at runtime
-				printf("[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[%d] at runtime\n", findex);
+				// printf("[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[%d] at runtime\n", findex);
 				// X9 = load function pointer from m->functions_ptrs[findex] at RUNTIME
 				arm_load_imm64(ctx, X11, (uint64_t)&m->functions_ptrs[findex]);
 				arm_ldr_imm(ctx, X9, X11, 0, 3);  // X9 = *(&m->functions_ptrs[findex])
@@ -5487,7 +5505,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OCallThis:
 		{
-			printf("[OCallThis] method_index=%d, nargs=%d\n", o->p2, o->p3);
+			// printf("[OCallThis] method_index=%d, nargs=%d\n", o->p2, o->p3);
 			// Call method on "this" object (register 0)
 			// this->type->proto[method_index](this, args...)
 			vreg *r = R(0);  // "this" is always register 0
@@ -5539,7 +5557,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 
 	case OCallClosure:
-		printf("[OCallClosure] closure_type=%d, nargs=%d\n", ra->t->kind, o->p3);
+		// printf("[OCallClosure] closure_type=%d, nargs=%d\n", ra->t->kind, o->p3);
 		// Call through closure: closure->fun(value?, args...)
 		if (ra->t->kind == HDYN) {
 			// Dynamic closure - call hl_dyn_call(closure, args[], nargs)
@@ -5572,7 +5590,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_movz(ctx, X2, o->p3, 0, true);
 
 			// Call hl_dyn_call
-			printf("[OCallClosure] About to call hl_dyn_call at %p\n", (void*)hl_dyn_call);
+			// printf("[OCallClosure] About to call hl_dyn_call at %p\n", (void*)hl_dyn_call);
 			arm_load_imm64(ctx, X9, (uint64_t)hl_dyn_call);
 			arm_blr(ctx, X9);
 
@@ -7351,11 +7369,11 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 	// mov x29, sp (set frame pointer)
 	// CRITICAL: Must use ADD, not ORR-based mov_reg!
 	// In ADD, reg 31 = SP; in ORR, reg 31 = XZR (zero)
-	int pos_before = ARM_BUF_POS();
+	// int pos_before = ARM_BUF_POS();
 	arm_add_imm(ctx, X29, XZR, 0, true);  // ADD X29, SP, #0
-	int pos_after = ARM_BUF_POS();
-	unsigned int *instr_ptr = (unsigned int*)(ctx->startBuf + pos_before);
-	printf("[PROLOGUE] MOV X29, SP instruction at offset %d: 0x%08x\n", pos_before, *instr_ptr);
+	// int pos_after = ARM_BUF_POS();
+	// unsigned int *instr_ptr = (unsigned int*)(ctx->startBuf + pos_before);
+	// printf("[PROLOGUE] MOV X29, SP instruction at offset %d: 0x%08x\n", pos_before, *instr_ptr);
 }
 
 // Generate function epilogue:
