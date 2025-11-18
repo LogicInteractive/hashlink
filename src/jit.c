@@ -3869,7 +3869,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// This allows recursive calls and forward calls to see this function's address
 	// Even though the function body isn't generated yet, the address is valid
 	m->functions_ptrs[f->findex] = (void*)(int_val)BUF_POS();
-	// printf("[JIT] Function %d assigned address at offset 0x%x\n", f->findex, BUF_POS());
 #endif
 
 	// make sure currentPos is > 0 before any reg allocations happen
@@ -4881,7 +4880,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			void *gaddr = (void*)(m->globals_data + m->globals_indexes[gindex]);
 
 			// fprintf(stderr, "[OGetGlobal COMPILE] global=%d, type.kind=%d\n", gindex, gtype->kind);
-			// fflush(stderr);
+			fflush(stderr);
 
 			// Simple, direct-load types (primitives, enums, etc.)
 			if (gtype->kind <= HLAST &&
@@ -4889,10 +4888,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			    gtype->kind != HDYN &&
 			    gtype->kind != HREF &&
 			    gtype->kind != HNULL &&
-			    gtype->kind != HMETHOD) {
+			    gtype->kind != HMETHOD &&
+		    gtype->kind != HABSTRACT) {
 
 				// fprintf(stderr, "[OGetGlobal] Simple type %d → direct load\n", gtype->kind);
-				// fflush(stderr);
+				fflush(stderr);
 				arm_load_imm64(ctx, X10, (uint64_t)gaddr);
 				arm_ldr_imm(ctx, X10, X10, 0, 3);   // 64-bit load
 				if (dst) {
@@ -4903,7 +4903,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// Complex types: HOBJ (11), HDYN, HREF, HNULL<T>, HMETHOD
 				// hl_type_get_global returns the final vdynamic* value directly in X0
 				// fprintf(stderr, "[OGetGlobal] Complex type %d → hl_type_get_global\n", gtype->kind);
-				// fflush(stderr);
+				fflush(stderr);
 				arm_load_imm64(ctx, X0, (uint64_t)gtype);                // arg0 = type*
 				arm_load_imm64(ctx, X9, (uint64_t)hl_type_get_global);
 				arm_blr(ctx, X9);
