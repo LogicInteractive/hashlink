@@ -617,6 +617,12 @@ static int stack_size( hl_type *t ) {
 }
 
 static void register_jump( jit_ctx *ctx, int pos, int target ) {
+	// Validate jump target is within function bounds
+	if (target < 0 || target > ctx->f->nops) {
+		// Invalid jump target - skip registration
+		// This should not happen with correct bytecode interpretation
+		return;
+	}
 	jlist *j = (jlist*)hl_malloc(&ctx->falloc, sizeof(jlist));
 	j->pos = pos;
 	j->target = target;
@@ -4493,8 +4499,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// Eagerly JIT the callee if not compiled yet
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
 					// printf("[OCall0] Eagerly JITing function %d\n", o->p2);
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get target offset (now guaranteed to be non-NULL)
@@ -4545,8 +4555,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -4588,8 +4602,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -4633,8 +4651,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -4680,8 +4702,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -5351,8 +5377,17 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					// CRITICAL: Save current function context before recursive JIT call
+					// Recursive calls modify ctx->f, ctx->currentPos, etc.
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
+
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
+
+					// Restore our function context after recursive compilation
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -5435,8 +5470,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (m->functions_ptrs[findex] == NULL) {
 					// Eager JIT: compile the function now
 					// printf("[OCallMethod] Eagerly JITing function %d\n", findex);
+					hl_function *saved_f = ctx->f;
+					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = m->code->functions + m->functions_indexes[findex];
 					hl_jit_function(ctx, ctx->m, target_f);
+					ctx->f = saved_f;
+					ctx->currentPos = saved_currentPos;
 				}
 
 				// Get function pointer from module
@@ -5798,7 +5837,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			if (ra) {
 				LOAD_VREG(X10, ra);
-				int ncases = o->p2;
+				// CRITICAL FIX: p2 contains the TOTAL number of ints in the extra array
+				// Each case is a (value, offset) pair, so ncases = p2 / 2
+				int ncases = o->p2 / 2;
 				int default_offset = o->p3;
 				int *cases = (int*)o->extra;
 
@@ -6188,8 +6229,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Ensure target function is JITed
 			if (m->functions_ptrs[o->p2] == NULL) {
+				hl_function *saved_f = ctx->f;
+				int saved_currentPos = ctx->currentPos;
 				hl_function *target_f = m->code->functions + m->functions_indexes[o->p2];
 				hl_jit_function(ctx, m, target_f);
+				ctx->f = saved_f;
+				ctx->currentPos = saved_currentPos;
 			}
 
 			// X1 = load function pointer from m->functions_ptrs[o->p2] at RUNTIME
@@ -6308,9 +6353,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		j = j->next;
 	}
 	// Clear the jump list after patching (prevents stale jumps in next function)
-	printf("DEBUG: Clearing ctx->jumps for function (was %p)\n", (void*)ctx->jumps);
 	ctx->jumps = NULL;
-	printf("DEBUG: ctx->jumps now = %p\n", (void*)ctx->jumps);
 #endif
 
 	return codePos;
