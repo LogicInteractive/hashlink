@@ -3519,20 +3519,30 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	// Patch closures
 	vclosure *c_closure = ctx->closure_list;
 	int closure_count = 0;
+	printf("[PATCH] Starting closure patching, closure_list=%p\n", (void*)ctx->closure_list);
 	while( c_closure ) {
 		vclosure *next;
 		int fid = (int)(int_val)c_closure->fun;
 		void *fabs = m->functions_ptrs[fid];
+		printf("[PATCH] Closure %d: fid=%d, offset=%p, ", closure_count, fid, fabs);
 		if( fabs == NULL ) {
+			printf("ERROR: NULL offset!\n");
 			return NULL;
 		}
 		fabs = (unsigned char*)code + (int)(int_val)fabs;
 		c_closure->fun = fabs;
+		printf("absolute=%p\n", fabs);
 		next = (vclosure*)c_closure->value;
 		c_closure->value = NULL;
 		c_closure = next;
 		closure_count++;
 	}
+	printf("[PATCH] Patched %d closures\n", closure_count);
+
+
+	// NOTE: Do NOT convert m->functions_ptrs here!
+	// module.c will convert them after hl_jit_code returns (see module.c:686-688)
+	// Converting them here would cause DOUBLE CONVERSION (offset → addr → garbage)!
 
 	// ARM64 CRITICAL: Flush instruction cache
 	// Without this, the CPU may execute stale cached instructions
@@ -5170,6 +5180,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Use type->obj->proto to get function index, then resolve to function pointer
 			vreg *obj = R(o->extra[0]);
 
+			if (obj == NULL) {
+				printf("[OCallMethod] ERROR: obj vreg is NULL\n");
+				jit_error("OCallMethod: NULL object vreg");
+			}
+			if (obj->t == NULL) {
+				printf("[OCallMethod] ERROR: obj->t is NULL\n");
+				jit_error("OCallMethod: NULL type");
+			}
+
 			printf("[OCallMethod] type=%d, method_index=%d, nargs=%d\n",
 			       obj->t->kind, o->p2, o->p3);
 
@@ -5221,36 +5240,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				method_ptr = m->functions_ptrs[findex];
 				printf("[OCallMethod] Resolved method_ptr=%p\n", method_ptr);
 			} else {
-				// Primitive types - use hl_get_obj_proto() to get runtime methods
-				printf("[OCallMethod] Primitive type %d - using runtime proto\n", obj->t->kind);
-				hl_runtime_obj *rt = hl_get_obj_proto(obj->t);
-				if (rt == NULL || rt->methods == NULL) {
-					printf("[OCallMethod] ERROR: No runtime methods for primitive type %d\n", obj->t->kind);
-					jit_error("OCallMethod: primitive type has no runtime methods");
-				}
-
-				if (o->p2 >= rt->nmethods) {
-					printf("[OCallMethod] ERROR: Method index %d >= nmethods %d\n", o->p2, rt->nmethods);
-					jit_error("OCallMethod: method index out of bounds for primitive");
-				}
-
-				void *method_ptr_from_rt = rt->methods[o->p2];
-				printf("[OCallMethod] Runtime method[%d] = %p\n", o->p2, method_ptr_from_rt);
-
-				if (method_ptr_from_rt != NULL) {
-					// Use the runtime method pointer directly
-					findex = -2; // Special marker
-					method_ptr = method_ptr_from_rt;
-					printf("[OCallMethod] Using runtime method pointer %p\n", method_ptr);
-				} else {
-					// Method pointer not yet initialized, error for now
-					printf("[OCallMethod] ERROR: Runtime method[%d] is NULL\n", o->p2);
-					jit_error("OCallMethod: primitive type method not initialized");
-				}
-			}
-
-			if (method_ptr == NULL) {
-				jit_error("OCallMethod: NULL method pointer after resolution");
+				// Non-object types (primitives, nullable, etc) - use runtime dispatch
+				// Similar to OCallThis, read type from object at runtime and dispatch dynamically
+				printf("[OCallMethod] Non-object type %d - using runtime dispatch\n", obj->t->kind);
+				findex = -2; // Special marker for runtime dispatch
+				method_ptr = NULL; // Will be loaded at runtime
 			}
 
 			// Set up arguments FIRST (before we clobber registers)
@@ -5264,8 +5258,32 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				jit_error("OCallMethod with >8 args not yet implemented");
 			}
 
-			// Load the method pointer (known at JIT time)
-			arm_load_imm64(ctx, X9, (uint64_t)method_ptr);
+			// Load the method pointer
+			if (findex == -2) {
+				// Runtime dispatch: read type from object, then proto[method_index]
+				// obj is in X0 (first argument)
+				printf("[OCallMethod] Runtime dispatch: method_index=%d\n", o->p2);
+				// Read type from object (offset 0)
+				arm_ldr_imm(ctx, X9, X0, 0, 3);  // X9 = obj->type
+				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
+				arm_ldr_imm(ctx, X9, X9, 2, 3);  // X9 = type->vobj_proto
+				// Load method address from proto[method_index]
+				// NOTE: After m->functions_ptrs conversion, vobj_proto contains ABSOLUTE addresses!
+				if (o->p2 < 4096) {
+					arm_ldr_imm(ctx, X9, X9, o->p2, 3);  // X9 = proto[method_index] (absolute address)
+				} else {
+					arm_load_imm64(ctx, X11, o->p2 * HL_WSIZE);
+					arm_ldr_reg(ctx, X9, X9, X11, 3);
+				}
+				// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
+				printf("[OCallMethod] Runtime dispatch generated (proto has absolute addresses)\n");
+			} else {
+				// Compile-time known method pointer
+				if (method_ptr == NULL) {
+					jit_error("OCallMethod: NULL method pointer after resolution");
+				}
+				arm_load_imm64(ctx, X9, (uint64_t)method_ptr);
+			}
 
 			// Call the method
 			arm_blr(ctx, X9);
@@ -5307,7 +5325,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				jit_error("OCallThis with >7 args not yet implemented");
 			}
 
-			// Load method pointer from proto[method_index]
+			// Load method address from proto[method_index]
+			// NOTE: After m->functions_ptrs conversion, vobj_proto contains ABSOLUTE addresses!
 			// LDR X9, [X9, #(o->p2 * HL_WSIZE)]
 			// Scaled offset: (o->p2 * 8) / 8 = o->p2
 			if (o->p2 < 4096) {
@@ -5316,6 +5335,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_load_imm64(ctx, X11, o->p2 * HL_WSIZE);
 				arm_ldr_reg(ctx, X9, X9, X11, 3);
 			}
+
+			// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
 
 			// Call the method
 			arm_blr(ctx, X9);
@@ -5413,11 +5434,14 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// vclosure struct: { t, fun, hasValue, value }
 			// Offset 0 = t, Offset 8 = fun
 			// For scaled offset with size=3 (64-bit): offset_bytes / 8 = 8 / 8 = 1
+			// NOTE: After JIT, closure->fun contains an ABSOLUTE ADDRESS (from hl_alloc_closure_ptr)!
 			arm_ldr_imm(ctx, X9, X11, 1, 3);
 
 			// DEBUG: Check if function pointer is NULL
 			// CBZ X9, error_label
 			int null_check_jump = arm_do_cbz(ctx, X9, true);
+
+			// NO CONVERSION NEEDED - closure->fun already contains absolute address!
 
 			// Normal case: call the function
 			arm_blr(ctx, X9);
@@ -5460,10 +5484,13 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Load function pointer and call
 			// closure->fun is at offset HL_WSIZE (scaled offset = 1)
+			// NOTE: After JIT, closure->fun contains an ABSOLUTE ADDRESS (from hl_alloc_closure_ptr)!
 			arm_ldr_imm(ctx, X9, X11, 1, 3);
 
 			// DEBUG: Check if function pointer is NULL
 			int null_check_jump2 = arm_do_cbz(ctx, X9, true);
+
+			// NO CONVERSION NEEDED - closure->fun already contains absolute address!
 
 			// Normal case: call the function
 			arm_blr(ctx, X9);
@@ -5948,19 +5975,22 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// X0 = object
 			LOAD_VREG(X0, rb);
 
-			// X1 = function pointer (needs to be patched when JIT address is known)
-			// For now, mark it as needing patching via ctx->calls
-			jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
-			j->pos = ARM_BUF_POS();
-			j->target = o->p2;
-			j->next = ctx->calls;
-			ctx->calls = j;
+			// X1 = function pointer - get offset and convert to absolute address
+			// On ARM64, functions_ptrs contains offsets, not addresses
+			hl_module *m = ctx->m;
 
-			// Placeholder - will be patched with actual JIT function address
-			arm_load_imm64(ctx, X1, 0xDEADBEEF);
+			// Ensure target function is JITed
+			if (m->functions_ptrs[o->p2] == NULL) {
+				hl_function *target_f = m->code->functions + m->functions_indexes[o->p2];
+				hl_jit_function(ctx, m, target_f);
+			}
+
+			// X1 = load function pointer from m->functions_ptrs[o->p2] at RUNTIME
+			// (module.c will have converted it to absolute address by the time this executes)
+			arm_load_imm64(ctx, X11, (uint64_t)&m->functions_ptrs[o->p2]);
+			arm_ldr_imm(ctx, X1, X11, 0, 3);  // X1 = *(&m->functions_ptrs[o->p2])
 
 			// X2 = function type
-			hl_module *m = ctx->m;
 			hl_type *ftype = m->code->functions[m->functions_indexes[o->p2]].type;
 			arm_load_imm64(ctx, X2, (uint64_t)ftype);
 
@@ -5997,18 +6027,21 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// X0 = object (load from stack)
 			LOAD_VREG(X0, ra);
 
-			// X1 = read function pointer from obj->type->vobj_proto[o->p3]
+			// X1 = read function address from obj->type->vobj_proto[o->p3]
+			// NOTE: After m->functions_ptrs conversion, vobj_proto contains ABSOLUTE addresses!
 			// LDR X1, [X0, #0]  - load type
 			arm_ldr_imm(ctx, X1, X0, 0, 3);
 			// LDR X1, [X1, #(HL_WSIZE*2)]  - load vobj_proto
 			arm_ldr_imm(ctx, X1, X1, 2, 3);
-			// LDR X1, [X1, #(HL_WSIZE*o->p3)]  - load function pointer
+			// LDR X1, [X1, #(HL_WSIZE*o->p3)]  - load function address
 			if (o->p3 < 4096) {
 				arm_ldr_imm(ctx, X1, X1, o->p3, 3);
 			} else {
 				arm_load_imm64(ctx, X9, o->p3 * HL_WSIZE);
 				arm_ldr_reg(ctx, X1, X1, X9, 3);
 			}
+
+			// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
 
 			// X2 = function type
 			arm_load_imm64(ctx, X2, (uint64_t)t);
@@ -7093,11 +7126,11 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 		// Frame too large for single STP, need to adjust SP first
 		// sub sp, sp, #framesize
 		if (framesize <= 4095) {
-			arm_sub_imm(ctx, XZR, XZR, framesize, true);  // XZR acts as SP in this context
+			arm_sub_imm(ctx, SP, SP, framesize, true);
 		} else {
 			// Large frame: use temporary register
 			arm_load_imm64(ctx, X9, framesize);
-			arm_sub_reg(ctx, XZR, XZR, X9, true);
+			arm_sub_reg(ctx, SP, SP, X9, true);
 		}
 		// stp x29, x30, [sp] - offset mode (no writeback)
 		// For offset mode, we'll manually encode since our function only does writeback modes
@@ -7153,10 +7186,10 @@ static void arm_epilogue(jit_ctx *ctx, int framesize) {
 		B32(inst);
 		// add sp, sp, #framesize
 		if (framesize <= 4095) {
-			arm_add_imm(ctx, XZR, XZR, framesize, true);
+			arm_add_imm(ctx, SP, SP, framesize, true);
 		} else {
 			arm_load_imm64(ctx, X9, framesize);
-			arm_add_reg(ctx, XZR, XZR, X9, true);
+			arm_add_reg(ctx, SP, SP, X9, true);
 		}
 	} else {
 		// LDP with post-index
