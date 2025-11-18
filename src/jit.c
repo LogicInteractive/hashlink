@@ -622,7 +622,7 @@ static void register_jump( jit_ctx *ctx, int pos, int target ) {
 	j->target = target;
 	j->next = ctx->jumps;
 	ctx->jumps = j;
-	if( target != 0 && ctx->opsPos[target] == 0 )
+	if( target > 0 && target < ctx->f->nops && ctx->opsPos[target] == 0 )
 		ctx->opsPos[target] = -1;
 }
 
@@ -3670,22 +3670,6 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		c = c->next;
 		}
 
-	// Patch jumps (conditional branches, etc.)
-	jlist *j = ctx->jumps;
-	while( j ) {
-			int target_pos = ctx->opsPos[j->target];
-			if( target_pos <= 0 && j->target != 0 ) {
-			printf("Invalid jump target: j->target=%d, target_pos=%d (raw: 0x%x)\n", j->target, target_pos, target_pos);
-			return NULL;
-		}
-
-		// Patch to the actual target position (not current position!)
-			arm_patch_jump_to(ctx, j->pos, target_pos);
-	
-		j = j->next;
-		}
-
-	// Patch closures
 	vclosure *c_closure = ctx->closure_list;
 	int closure_count = 0;
 	printf("[PATCH] Starting closure patching, closure_list=%p\n", (void*)ctx->closure_list);
@@ -3803,6 +3787,18 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #endif
 	ctx->f = f;
 	ctx->allocOffset = 0;
+#ifdef HL_JIT_ARM64
+	// Debug: Check if jump list has stale entries
+	if (ctx->jumps != NULL) {
+		int stale_count = 0;
+		jlist *j = ctx->jumps;
+		while (j && stale_count < 5) {
+			printf("WARNING: Stale jump at start of function - pos=0x%x, target=%d\n", j->pos, j->target);
+			j = j->next;
+			stale_count++;
+		}
+	}
+#endif
 	ctx->jumps = NULL;  // Clear jump list for this function (ARM64)
 	if( f->nregs > ctx->maxRegs ) {
 		free(ctx->vregs);
@@ -6295,6 +6291,27 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	}
 
 	#undef GET_REG
+
+#ifdef HL_JIT_ARM64
+	// Patch jumps (conditional branches, etc.) - must be done per-function before ctx->jumps is cleared
+	jlist *j = ctx->jumps;
+	while( j ) {
+		int target_pos = ctx->opsPos[j->target];
+		if( target_pos <= 0 && j->target != 0 ) {
+			printf("ERROR: Invalid jump - pos=0x%x, target=%d, target_pos=%d, nops=%d\n",
+			       j->pos, j->target, target_pos, f->nops);
+			jit_error("Invalid jump target");
+			return -1;
+		}
+		// Patch to the actual target position
+		arm_patch_jump_to(ctx, j->pos, target_pos);
+		j = j->next;
+	}
+	// Clear the jump list after patching (prevents stale jumps in next function)
+	printf("DEBUG: Clearing ctx->jumps for function (was %p)\n", (void*)ctx->jumps);
+	ctx->jumps = NULL;
+	printf("DEBUG: ctx->jumps now = %p\n", (void*)ctx->jumps);
+#endif
 
 	return codePos;
 #endif // HL_JIT_ARM64
