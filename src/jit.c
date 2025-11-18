@@ -5962,7 +5962,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OStaticClosure:
 		// Allocate static closure and store pointer
 		if (dst) {
+			printf("[OStaticClosure] fid=%d\n", o->p2);
 			vclosure *c = alloc_static_closure(ctx, o->p2);
+			printf("[OStaticClosure] Allocated closure at %p, fun=%p\n", (void*)c, c->fun);
 			arm_load_imm64(ctx, X10, (uint64_t)c);
 			STORE_VREG(X10, dst);
 		}
