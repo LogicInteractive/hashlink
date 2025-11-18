@@ -3523,6 +3523,11 @@ static void* jit_hl2c_arm64(vclosure* c, void** args, int nargs, bool ret_void) 
 	return result;
 }
 
+// ARM64 wrapper function for get_wrapper callback
+static void *get_wrapper_arm64( hl_type *t ) {
+	return (void*)jit_hl2c_arm64;
+}
+
 // ARM64 JIT initialization
 void hl_jit_init_arm64( jit_ctx *ctx ) {
 	// Trampolines are now regular C functions with inline assembly
@@ -3707,10 +3712,10 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	// These are now regular C functions with inline assembly
 	if( !call_jit_c2hl ) {
 		printf("[TRAMPOLINE] Setting up ARM64 trampolines\n");
-		hl_setup.static_call = callback_c2hl_arm64;
-		hl_setup.get_wrapper = (void*)jit_hl2c_arm64;
+		hl_setup.static_call = callback_c2hl_arm64;     // C calling HL JIT code
+		hl_setup.get_wrapper = get_wrapper_arm64;      // HL JIT calling C native functions
 		printf("[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl_arm64)\n", hl_setup.static_call);
-		printf("[TRAMPOLINE] hl_setup.get_wrapper=%p (jit_hl2c_arm64)\n", hl_setup.get_wrapper);
+		printf("[TRAMPOLINE] hl_setup.get_wrapper=%p (get_wrapper_arm64)\n", hl_setup.get_wrapper);
 		hl_setup.static_call_ref = false;  // We pass the function pointer directly, not a reference
 		call_jit_c2hl = (void*)1;  // Mark as initialized
 	}
