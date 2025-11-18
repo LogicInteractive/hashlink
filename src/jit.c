@@ -7281,8 +7281,8 @@ static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 		}
 		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
 		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
-	} else if ((opcode & 0xFE) == 0x34) {
-		// CBZ/CBNZ (19-bit offset)
+	} else if ((opcode & 0x7E) == 0x34) {
+		// CBZ/CBNZ (19-bit offset) - mask sf bit to handle both 32-bit (0x34/0x35) and 64-bit (0xB4/0xB5)
 		if (!arm_fits_signed(offset >> 2, 19)) {
 			ASSERT(16);
 			return;
@@ -7439,6 +7439,7 @@ static void arm_epilogue(jit_ctx *ctx, int framesize) {
 		                    (1 << 29) |           // bit 29 = 1
 		                    (0b01000 << 24) |     // bits [28:24] = 01000
 		                    (1 << 23) |           // bit 23 = 1 (post-index)
+		                    (1 << 22) |           // bit 22 = 1 (L=1 for LDP, not STP!)
 		                    ((imm7 & 0x7F) << 15) | // imm7
 		                    (30 << 10) |          // Rt2 = X30 (LR)
 		                    (31 << 5) |           // Rn = 31 (SP)
