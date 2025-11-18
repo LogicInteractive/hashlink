@@ -4352,12 +4352,18 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
-				void *target_addr = ctx->m->functions_ptrs[o->p2];
-				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+
+				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
+				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
+				int_val call_site_offset = BUF_POS();
+				int_val delta = target_offset - call_site_offset;
+
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
 				} else {
+					// Fall back to indirect call
+					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
 				}
@@ -4389,12 +4395,18 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
-				void *target_addr = ctx->m->functions_ptrs[o->p2];
-				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+
+				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
+				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
+				int_val call_site_offset = BUF_POS();
+				int_val delta = target_offset - call_site_offset;
+
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
 				} else {
+					// Fall back to indirect call
+					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
 				}
@@ -4428,12 +4440,18 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
-				void *target_addr = ctx->m->functions_ptrs[o->p2];
-				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+
+				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
+				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
+				int_val call_site_offset = BUF_POS();
+				int_val delta = target_offset - call_site_offset;
+
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
 				} else {
+					// Fall back to indirect call
+					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
 				}
@@ -4469,12 +4487,18 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
-				void *target_addr = ctx->m->functions_ptrs[o->p2];
-				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+
+				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
+				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
+				int_val call_site_offset = BUF_POS();
+				int_val delta = target_offset - call_site_offset;
+
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
 				} else {
+					// Fall back to indirect call
+					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
 				}
@@ -5117,12 +5141,18 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
-				void *target_addr = ctx->m->functions_ptrs[o->p2];
-				int_val delta = (int_val)target_addr - (int_val)(ctx->startBuf + BUF_POS());
+
+				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
+				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
+				int_val call_site_offset = BUF_POS();
+				int_val delta = target_offset - call_site_offset;
+
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
 				} else {
+					// Fall back to indirect call
+					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
 				}
