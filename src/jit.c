@@ -3587,6 +3587,8 @@ void hl_jit_patch_method_arm64( void *old_fun, void **new_fun_table ) {
 
 // ARM64 code generation
 void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug ) {
+	fprintf(stderr, "[ARM64_CODE] hl_jit_code_arm64 called!\n");
+	fflush(stderr);
 	int size = BUF_POS();
 	unsigned char *code;
 
@@ -3710,12 +3712,16 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// Set up dynamic call trampolines (C <-> HL calling convention conversion)
 	// These are now regular C functions with inline assembly
+	fprintf(stderr, "[TRAMPOLINE_CHECK] Reached trampoline setup code, call_jit_c2hl=%p\n", call_jit_c2hl);
+	fflush(stderr);
 	if( !call_jit_c2hl ) {
-		printf("[TRAMPOLINE] Setting up ARM64 trampolines\n");
+		fprintf(stderr, "[TRAMPOLINE] Setting up ARM64 trampolines\n");
+		fflush(stderr);
 		hl_setup.static_call = callback_c2hl_arm64;     // C calling HL JIT code
 		hl_setup.get_wrapper = get_wrapper_arm64;      // HL JIT calling C native functions
-		printf("[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl_arm64)\n", hl_setup.static_call);
-		printf("[TRAMPOLINE] hl_setup.get_wrapper=%p (get_wrapper_arm64)\n", hl_setup.get_wrapper);
+		fprintf(stderr, "[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl_arm64)\n", hl_setup.static_call);
+		fprintf(stderr, "[TRAMPOLINE] hl_setup.get_wrapper=%p (get_wrapper_arm64)\n", hl_setup.get_wrapper);
+		fflush(stderr);
 		hl_setup.static_call_ref = false;  // We pass the function pointer directly, not a reference
 		call_jit_c2hl = (void*)1;  // Mark as initialized
 	}
@@ -3761,10 +3767,16 @@ void hl_jit_patch_method( void *old_fun, void **new_fun_table ) {
 
 void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous ) {
 #ifdef HL_JIT_X86
+	fprintf(stderr, "[JIT_CODE] Using HL_JIT_X86 path\n");
+	fflush(stderr);
 	return hl_jit_code_x86(ctx, m, codesize, debug, previous);
 #elif defined(HL_JIT_ARM64)
+	fprintf(stderr, "[JIT_CODE] Using HL_JIT_ARM64 path\n");
+	fflush(stderr);
 	return hl_jit_code_arm64(ctx, m, codesize, debug);
 #else
+	fprintf(stderr, "[JIT_CODE] No JIT support detected!\n");
+	fflush(stderr);
 	hl_error("JIT not supported on this architecture");
 	return NULL;
 #endif
