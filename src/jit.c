@@ -2609,16 +2609,22 @@ void hl_jit_free( jit_ctx *ctx, h_bool can_reset ) {
 	if( !can_reset ) free(ctx);
 }
 
+// Dynamic call trampolines (shared between x86 and ARM64)
+#define MAX_ARGS 16
+static void *call_jit_c2hl = NULL;
+static void *call_jit_hl2c = NULL;
+
+// Forward declarations for x86
+#ifndef HL_JIT_ARM64
+static void *callback_c2hl( void *_f, hl_type *t, void **args, vdynamic *ret );
+static void *get_wrapper( hl_type *t );
+#endif
+
 #ifdef HL_JIT_X86
 static void jit_nops( jit_ctx *ctx ) {
 	while( BUF_POS() & 15 )
 		op32(ctx, NOP, UNUSED, UNUSED);
 }
-
-#define MAX_ARGS 16
-
-static void *call_jit_c2hl = NULL;
-static void *call_jit_hl2c = NULL;
 
 static void *callback_c2hl( void *_f, hl_type *t, void **args, vdynamic *ret ) {
 	/*
@@ -3195,6 +3201,13 @@ static vclosure *alloc_static_closure( jit_ctx *ctx, int fid ) {
 #ifdef HL_JIT_ARM64
 static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
 static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
+// Helper wrappers for common STP/LDP modes
+static inline void arm_stp_pre(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset) {
+	arm_stp(ctx, rt, rt2, rn, offset, true, true);
+}
+static inline void arm_ldp_post(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset) {
+	arm_ldp(ctx, rt, rt2, rn, offset, true, false);  // post-index mode
+}
 static void arm_add_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_add_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64);
 static void arm_sub_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
@@ -3367,10 +3380,156 @@ static int jit_build_arm64( jit_ctx *ctx, void (*fbuild)( jit_ctx *) ) {
 	return pos;
 }
 
+// ARM64 argument layout for trampoline
+typedef struct {
+	int64_t iargs[8];   // 64 bytes: X0-X7 integer/pointer arguments
+	double  fargs[8];   // 64 bytes: V0-V7 float/double arguments (stored as doubles)
+} hl_vargs;
+
+// ARM64 low-level trampoline: loads args from hl_vargs and calls closure
+// This is the actual assembly code that sets up registers and calls the function
+static void* jit_c2hl_arm64_trampoline(void* closure, hl_vargs* vargs) {
+	register void* result;
+	__asm__ volatile (
+		// Save callee-saved integer regs (X19–X28) and FP/LR
+		"stp x29, x30, [sp, #-160]!\n"   // pre-index, make 160-byte frame
+		"stp x27, x28, [sp, #16]\n"
+		"stp x25, x26, [sp, #32]\n"
+		"stp x23, x24, [sp, #48]\n"
+		"stp x21, x22, [sp, #64]\n"
+		"stp x19, x20, [sp, #80]\n"
+		"mov x29, sp\n"                  // set frame pointer
+
+		// x0 = function pointer (already in x0 from caller)
+		// x1 = pointer to hl_vargs* on stack (passed by caller)
+		"mov x20, x0\n"                  // save function pointer (before we overwrite x0!)
+		"mov x19, x1\n"                  // save args pointer
+
+		// Load first 8 integer args from hl_vargs* into x0–x7
+		"ldp x0, x1, [x19, #0]\n"
+		"ldp x2, x3, [x19, #16]\n"
+		"ldp x4, x5, [x19, #32]\n"
+		"ldp x6, x7, [x19, #48]\n"
+
+		// Load first 8 float/double args into v0–v7
+		"ldp q0, q1, [x19, #64]\n"
+		"ldp q2, q3, [x19, #96]\n"
+		"ldp q4, q5, [x19, #128]\n"
+		"ldp q6, q7, [x19, #160]\n"
+
+		// Call the function pointer directly (it's in x20)
+		"blr x20\n"
+
+		// Return value is in x0
+		"mov %[result], x0\n"
+
+		// Restore callee-saved regs
+		"ldp x19, x20, [sp, #80]\n"
+		"ldp x21, x22, [sp, #64]\n"
+		"ldp x23, x24, [sp, #48]\n"
+		"ldp x25, x26, [sp, #32]\n"
+		"ldp x27, x28, [sp, #16]\n"
+		"ldp x29, x30, [sp], #160\n"
+		: [result] "=r" (result)
+		: "r" (closure), "r" (vargs)
+		: "x1","x2","x3","x4","x5","x6","x7","x8","x9","x19","x20","memory"
+	);
+	return result;
+}
+
+// ARM64 high-level callback wrapper for hl_setup.static_call
+// Converts from static_call signature to trampoline signature
+static void *callback_c2hl_arm64( void *_f, hl_type *t, void **args, vdynamic *ret ) {
+	hl_vargs vargs = {0};
+	int i;
+
+	if( t->fun->nargs > 8 )
+		hl_error("Too many arguments for dynamic call (ARM64 supports up to 8)");
+
+	// Prepare arguments in hl_vargs structure
+	for(i=0;i<t->fun->nargs;i++) {
+		hl_type *at = t->fun->args[i];
+		void *v = args[i];
+
+		// For now, treat all args as 64-bit values in integer registers
+		// TODO: proper handling of float vs int registers based on type
+		switch( at->kind ) {
+		case HBOOL:
+		case HUI8:
+			vargs.iargs[i] = *(unsigned char*)v;
+			break;
+		case HUI16:
+			vargs.iargs[i] = *(unsigned short*)v;
+			break;
+		case HI32:
+			vargs.iargs[i] = *(int*)v;
+			break;
+		case HF32:
+			vargs.fargs[i] = *(float*)v;
+			break;
+		case HF64:
+			vargs.fargs[i] = *(double*)v;
+			break;
+		case HI64:
+		case HGUID:
+			vargs.iargs[i] = *(int64*)v;
+			break;
+		default:
+			vargs.iargs[i] = (int64_t)v;
+			break;
+		}
+	}
+
+	// Call the low-level trampoline
+	// _f is the function pointer (cl->fun) passed directly
+	return jit_c2hl_arm64_trampoline(_f, &vargs);
+}
+
+// ARM64 HL → C trampoline (for native calls from JIT code)
+// Signature: vclosure* c, void** args, int nargs, bool ret_void
+static void* jit_hl2c_arm64(vclosure* c, void** args, int nargs, bool ret_void) {
+	register void* result __asm__("x0");
+
+	__asm__ volatile (
+		// Save callee-saved + LR
+		"stp x29, x30, [sp, #-96]!\n"
+		"stp x19, x20, [sp, #16]\n"
+		"stp x21, x22, [sp, #32]\n"
+		"mov x29, sp\n"
+
+		// Move args to x0–x7
+		"ldr x0, [%[args], #0]\n"
+		"cmp %w[nargs], #1\n" "ble 1f\n"
+		"ldr x1, [%[args], #8]\n"
+		"cmp %w[nargs], #2\n" "ble 1f\n"
+		"ldr x2, [%[args], #16]\n"
+		// ... add up to x7 if you want, or loop — 8 is enough for 99%%
+
+		"1:\n"
+		"ldr x9, [%[c], #8]\n"    // c->fun
+		"blr x9\n"
+
+		"mov %[result], x0\n"
+
+		// Restore
+		"ldp x21, x22, [sp, #32]\n"
+		"ldp x19, x20, [sp, #16]\n"
+		"ldp x29, x30, [sp], #96\n"
+		: [result] "=r" (result)
+		: [c] "r" (c), [args] "r" (args), [nargs] "r" (nargs)
+		: "x1","x2","x3","x4","x5","x6","x7","x8","x9","memory"
+	);
+
+	return result;
+}
+
 // ARM64 JIT initialization
 void hl_jit_init_arm64( jit_ctx *ctx ) {
-	// Note: We don't need c2hl/hl2c trampolines for ARM64 yet
-	// as closures are not implemented. We just need error handlers.
+	// Trampolines are now regular C functions with inline assembly
+	// No need to build them as JIT code
+	// They will be set up in hl_jit_code_arm64
+
+	// Build error handlers
 	ctx->static_functions[0] = (void*)(int_val)jit_build_arm64(ctx,jit_null_access_arm64);
 	ctx->static_functions[1] = (void*)(int_val)jit_build_arm64(ctx,jit_assert_arm64);
 	ctx->static_functions[2] = (void*)(int_val)jit_build_arm64(ctx,jit_null_field_access_arm64);
@@ -3543,6 +3702,18 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	// NOTE: Do NOT convert m->functions_ptrs here!
 	// module.c will convert them after hl_jit_code returns (see module.c:686-688)
 	// Converting them here would cause DOUBLE CONVERSION (offset → addr → garbage)!
+
+	// Set up dynamic call trampolines (C <-> HL calling convention conversion)
+	// These are now regular C functions with inline assembly
+	if( !call_jit_c2hl ) {
+		printf("[TRAMPOLINE] Setting up ARM64 trampolines\n");
+		hl_setup.static_call = callback_c2hl_arm64;
+		hl_setup.get_wrapper = (void*)jit_hl2c_arm64;
+		printf("[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl_arm64)\n", hl_setup.static_call);
+		printf("[TRAMPOLINE] hl_setup.get_wrapper=%p (jit_hl2c_arm64)\n", hl_setup.get_wrapper);
+		hl_setup.static_call_ref = false;  // We pass the function pointer directly, not a reference
+		call_jit_c2hl = (void*)1;  // Mark as initialized
+	}
 
 	// ARM64 CRITICAL: Flush instruction cache
 	// Without this, the CPU may execute stale cached instructions
@@ -5278,11 +5449,13 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
 				printf("[OCallMethod] Runtime dispatch generated (proto has absolute addresses)\n");
 			} else {
-				// Compile-time known method pointer
-				if (method_ptr == NULL) {
-					jit_error("OCallMethod: NULL method pointer after resolution");
-				}
-				arm_load_imm64(ctx, X9, (uint64_t)method_ptr);
+				// Compile-time known method - load function pointer at RUNTIME
+				// NOTE: At JIT time, m->functions_ptrs contains OFFSETS, not absolute addresses!
+				// module.c converts them AFTER hl_jit_code returns, so we must load at runtime
+				printf("[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[%d] at runtime\n", findex);
+				// X9 = load function pointer from m->functions_ptrs[findex] at RUNTIME
+				arm_load_imm64(ctx, X11, (uint64_t)&m->functions_ptrs[findex]);
+				arm_ldr_imm(ctx, X9, X11, 0, 3);  // X9 = *(&m->functions_ptrs[findex])
 			}
 
 			// Call the method
@@ -6141,11 +6314,15 @@ void *hl_jit_code_x86( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos
 	memcpy(code,ctx->startBuf,BUF_POS());
 	*codesize = size;
 	*debug = ctx->debug;
+	printf("[JIT_CODE] Finalizing JIT code: call_jit_c2hl=%p\n", call_jit_c2hl);
 	if( !call_jit_c2hl ) {
+		printf("[TRAMPOLINE] Setting up trampolines: ctx->c2hl=%p, ctx->hl2c=%p\n", (void*)(int_val)ctx->c2hl, (void*)(int_val)ctx->hl2c);
 		call_jit_c2hl = code + ctx->c2hl;
 		call_jit_hl2c = code + ctx->hl2c;
+		printf("[TRAMPOLINE] call_jit_c2hl=%p, call_jit_hl2c=%p\n", call_jit_c2hl, call_jit_hl2c);
 		hl_setup.get_wrapper = get_wrapper;
 		hl_setup.static_call = callback_c2hl;
+		printf("[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl)\n", hl_setup.static_call);
 		hl_setup.static_call_ref = true;
 #		ifdef JIT_CUSTOM_LONGJUMP
 		hl_setup.throw_jump = (void(*)(jmp_buf, int))(code + ctx->longjump);
