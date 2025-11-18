@@ -3253,6 +3253,7 @@ static void arm_fcvtzs(jit_ctx *ctx, Arm64Reg rd, Arm64FpReg fn, bool int64, boo
 static void arm_fcvt(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool src64);
 static void arm_patch_cbnz(jit_ctx *ctx, int pos, int target);
 static void arm_patch_jump(jit_ctx *ctx, int jump_pos);
+static void arm_patch_jump_to(jit_ctx *ctx, int jump_pos, int target_pos);
 static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64);
 static void arm_blr(jit_ctx *ctx, Arm64Reg rn);
 static void register_jump(jit_ctx *ctx, int jump_pos, int target);
@@ -3673,14 +3674,13 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	jlist *j = ctx->jumps;
 	while( j ) {
 			int target_pos = ctx->opsPos[j->target];
-			if( target_pos == 0 && j->target != 0 ) {
-			printf("Invalid jump target\n");
+			if( target_pos <= 0 && j->target != 0 ) {
+			printf("Invalid jump target: j->target=%d, target_pos=%d (raw: 0x%x)\n", j->target, target_pos, target_pos);
 			return NULL;
 		}
 
-		// Call the appropriate ARM64 patch function
-		// Note: The instruction type was stored at the jump position
-			arm_patch_jump(ctx, j->pos);
+		// Patch to the actual target position (not current position!)
+			arm_patch_jump_to(ctx, j->pos, target_pos);
 	
 		j = j->next;
 		}
@@ -3803,6 +3803,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #endif
 	ctx->f = f;
 	ctx->allocOffset = 0;
+	ctx->jumps = NULL;  // Clear jump list for this function (ARM64)
 	if( f->nregs > ctx->maxRegs ) {
 		free(ctx->vregs);
 		ctx->vregs = (vreg*)malloc(sizeof(vreg) * (f->nregs + 1));
@@ -7234,6 +7235,9 @@ static int arm_cbnz(jit_ctx *ctx, Arm64Reg rt, int offset, bool is64) {
 static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 	unsigned int *instr = (unsigned int*)(ctx->startBuf + jump_pos);
 	int offset = target_pos - jump_pos;
+
+	printf("[PATCH_BRANCH] jump_pos=%d, target_pos=%d, offset=%d\n", jump_pos, target_pos, offset);
+	printf("[PATCH_BRANCH] Instruction at jump_pos: 0x%08x\n", *instr);
 
 	unsigned int opcode = (*instr >> 24) & 0xFF;
 
