@@ -4301,15 +4301,14 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_jit_function(ctx, ctx->m, target_f);
 				}
 
-				// Get target address (now guaranteed to be non-NULL)
-				void *target_addr = ctx->m->functions_ptrs[o->p2];
+				// Get target offset (now guaranteed to be non-NULL)
+				// NOTE: functions_ptrs stores OFFSETS from ctx->startBuf, not absolute addresses!
+				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
+				int_val call_site_offset = BUF_POS();
+				int_val delta = target_offset - call_site_offset;
 
-				// Calculate offset for direct BL
-				int_val call_site = (int_val)(ctx->startBuf + BUF_POS());
-				int_val delta = (int_val)target_addr - call_site;
-
-				printf("[OCall0] Direct BL: target=%p, call_site=offset 0x%x, delta=%ld\n",
-				       target_addr, BUF_POS(), delta);
+				printf("[OCall0] Direct BL: target_offset=0x%lx, call_site_offset=0x%x, delta=%ld\n",
+				       target_offset, call_site_offset, delta);
 
 				// Check if offset fits in 26-bit signed immediate (±128 MB range)
 				if (delta >= -134217728LL && delta < 134217728LL) {
@@ -4320,6 +4319,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				} else {
 					// Fall back to indirect call if target is too far
 					printf("[OCall0] WARNING: Target too far for BL, using BLR\n");
+					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
 				}
@@ -5136,53 +5136,113 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OCallMethod:
 		{
-			printf("[OCallMethod] method_index=%d, nargs=%d\n", o->p2, o->p3);
 			// Call method on object from first argument
-			// object->type->proto[method_index](args...)
+			// Use type->obj->proto to get function index, then resolve to function pointer
 			vreg *obj = R(o->extra[0]);
 
+			printf("[OCallMethod] type=%d, method_index=%d, nargs=%d\n",
+			       obj->t->kind, o->p2, o->p3);
+
+			// Get function index from proto array
+			int findex = -1;
+			void *method_ptr = NULL;
+
 			if (obj->t->kind == HOBJ || obj->t->kind == HSTRUCT) {
-				// Load object from stack into X10
-				LOAD_VREG(X10, obj);
-
-				// Read type from object (offset 0)
-				// LDR X9, [X10, #0]
-				arm_ldr_imm(ctx, X9, X10, 0, 3);
-
-				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
-				// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
-				arm_ldr_imm(ctx, X9, X9, 2, 3);
-
-				// Set up arguments from o->extra (object and additional args)
-				for (i = 0; i < o->p3 && i < 8; i++) {
-					vreg *arg = R(o->extra[i]);
-					Arm64Reg dst_reg = X0 + i;
-					// Load directly into argument register
-					LOAD_VREG(dst_reg, arg);
+				// Object types have proto array in type->obj
+				if (obj->t->obj == NULL || obj->t->obj->proto == NULL) {
+					jit_error("OCallMethod: no proto array for object type");
 				}
 
-				if (o->p3 > 8) {
-					jit_error("OCallMethod with >8 args not yet implemented");
+				// Search proto array for matching pindex, including super classes
+				hl_type *search_type = obj->t;
+				while (search_type != NULL && findex == -1) {
+					if (search_type->kind == HOBJ || search_type->kind == HSTRUCT) {
+						for (int pi = 0; pi < search_type->obj->nproto; pi++) {
+							if (search_type->obj->proto[pi].pindex == o->p2) {
+								findex = search_type->obj->proto[pi].findex;
+								printf("[OCallMethod] Found method %d in type proto[%d], findex=%d\n",
+								       o->p2, pi, findex);
+								break;
+							}
+						}
+						// Move to parent class if not found
+						search_type = search_type->obj->super;
+					} else {
+						break;
+					}
 				}
 
-				// Load method pointer from proto[method_index]
-				// LDR X9, [X9, #(o->p2 * HL_WSIZE)]
-				if (o->p2 < 4096) {
-					arm_ldr_imm(ctx, X9, X9, o->p2, 3);
-				} else {
-					arm_load_imm64(ctx, X11, o->p2 * HL_WSIZE);
-					arm_ldr_reg(ctx, X9, X9, X11, 3);
+				if (findex == -1) {
+					printf("[OCallMethod] ERROR: Method pindex %d not found (searched inheritance chain)\n",
+					       o->p2);
+					jit_error("OCallMethod: method pindex not found");
+				}
+				printf("[OCallMethod] findex=%d\n", findex);
+
+				// Check if function is already JITed
+				if (m->functions_ptrs[findex] == NULL) {
+					// Eager JIT: compile the function now
+					printf("[OCallMethod] Eagerly JITing function %d\n", findex);
+					hl_function *target_f = m->code->functions + m->functions_indexes[findex];
+					hl_jit_function(ctx, ctx->m, target_f);
 				}
 
-				// Call the method
-				arm_blr(ctx, X9);
-
-				// Store result if needed
-				if (dst && dst->t->kind != HVOID) {
-					STORE_VREG(X0, dst);
-				}
+				// Get function pointer from module
+				method_ptr = m->functions_ptrs[findex];
+				printf("[OCallMethod] Resolved method_ptr=%p\n", method_ptr);
 			} else {
-				jit_error("OCallMethod: unsupported object type");
+				// Primitive types - use hl_get_obj_proto() to get runtime methods
+				printf("[OCallMethod] Primitive type %d - using runtime proto\n", obj->t->kind);
+				hl_runtime_obj *rt = hl_get_obj_proto(obj->t);
+				if (rt == NULL || rt->methods == NULL) {
+					printf("[OCallMethod] ERROR: No runtime methods for primitive type %d\n", obj->t->kind);
+					jit_error("OCallMethod: primitive type has no runtime methods");
+				}
+
+				if (o->p2 >= rt->nmethods) {
+					printf("[OCallMethod] ERROR: Method index %d >= nmethods %d\n", o->p2, rt->nmethods);
+					jit_error("OCallMethod: method index out of bounds for primitive");
+				}
+
+				void *method_ptr_from_rt = rt->methods[o->p2];
+				printf("[OCallMethod] Runtime method[%d] = %p\n", o->p2, method_ptr_from_rt);
+
+				if (method_ptr_from_rt != NULL) {
+					// Use the runtime method pointer directly
+					findex = -2; // Special marker
+					method_ptr = method_ptr_from_rt;
+					printf("[OCallMethod] Using runtime method pointer %p\n", method_ptr);
+				} else {
+					// Method pointer not yet initialized, error for now
+					printf("[OCallMethod] ERROR: Runtime method[%d] is NULL\n", o->p2);
+					jit_error("OCallMethod: primitive type method not initialized");
+				}
+			}
+
+			if (method_ptr == NULL) {
+				jit_error("OCallMethod: NULL method pointer after resolution");
+			}
+
+			// Set up arguments FIRST (before we clobber registers)
+			for (i = 0; i < o->p3 && i < 8; i++) {
+				vreg *arg = R(o->extra[i]);
+				Arm64Reg dst_reg = X0 + i;
+				LOAD_VREG(dst_reg, arg);
+			}
+
+			if (o->p3 > 8) {
+				jit_error("OCallMethod with >8 args not yet implemented");
+			}
+
+			// Load the method pointer (known at JIT time)
+			arm_load_imm64(ctx, X9, (uint64_t)method_ptr);
+
+			// Call the method
+			arm_blr(ctx, X9);
+
+			// Store result if needed
+			if (dst && dst->t->kind != HVOID) {
+				STORE_VREG(X0, dst);
 			}
 		}
 		break;
