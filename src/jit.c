@@ -3623,7 +3623,6 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		}
 
 	// Patch calls
-	printf("[PATCH] Starting call patching, code base=%p\n", (void*)code);
 	jlist *c = ctx->calls;
 	int patch_count = 0;
 	while( c ) {
@@ -3631,44 +3630,32 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		if( c->target < 0 ) {
 			// Static function (error handlers)
 			fabs = ctx->static_functions[-c->target-1];
-			printf("[PATCH] Call %d: static function %d at pos=%d, fabs=%p\n",
-			       patch_count, -c->target-1, c->pos, fabs);
 		} else {
 			// Module function
 			fabs = m->functions_ptrs[c->target];
-			printf("[PATCH] Call %d: function %d at pos=%d, offset=%p\n",
-			       patch_count, c->target, c->pos, fabs);
 			if( fabs == NULL ) {
-				printf("[PATCH] ERROR: Function %d pointer is NULL!\n", c->target);
 				// TODO: Handle previous module lookups
 				return NULL;
 			}
 			// At this point, fabs is a relative offset - convert to absolute
 			fabs = (unsigned char*)code + (int)(int_val)fabs;
-			printf("[PATCH]   -> absolute address=%p\n", fabs);
 		}
 
 		// Patch the BL instruction
 		// BL encoding: imm26 is signed offset / 4
 			unsigned int *instr = (unsigned int*)(code + c->pos);
-			printf("[PATCH]   Instruction at %p before patch: 0x%08x\n",
-			       (void*)instr, *instr);
 				int_val delta = (int_val)fabs - (int_val)(code + c->pos);
 			int offset = (int)(delta / 4);  // Offset in instructions
-		printf("[PATCH]   delta=%ld, offset=%d\n", delta, offset);
 		patch_count++;
 	
 		// Check if offset fits in 26 bits
 		if (offset < -(1<<25) || offset >= (1<<25)) {
-			printf("Target code too far to rebase: offset=%d, delta=%ld, target=%p, source=%p\n",
-			       offset, delta, fabs, (void*)(code + c->pos));
 			return NULL;
 		}
 
 			// Update BL instruction: keep top 6 bits, replace bottom 26 bits
 		unsigned int new_instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
 		*instr = new_instr;
-		printf("[PATCH]   Instruction AFTER patch: 0x%08x\n", *instr);
 
 		// Flush instruction cache for this specific instruction
 		__builtin___clear_cache((char*)instr, (char*)instr + 4);
@@ -3678,12 +3665,10 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	vclosure *c_closure = ctx->closure_list;
 	int closure_count = 0;
-	printf("[PATCH] Starting closure patching, closure_list=%p\n", (void*)ctx->closure_list);
 	while( c_closure ) {
 		vclosure *next;
 		int fid = (int)(int_val)c_closure->fun;
 		void *fabs = m->functions_ptrs[fid];
-		printf("[PATCH] Closure %d: fid=%d, offset=%p, ", closure_count, fid, fabs);
 		if( fabs == NULL ) {
 			printf("ERROR: NULL offset!\n");
 			return NULL;
@@ -3696,7 +3681,6 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		c_closure = next;
 		closure_count++;
 	}
-	printf("[PATCH] Patched %d closures\n", closure_count);
 
 
 	// NOTE: Do NOT convert m->functions_ptrs here!
@@ -3705,16 +3689,9 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// Set up dynamic call trampolines (C <-> HL calling convention conversion)
 	// These are now regular C functions with inline assembly
-	fprintf(stderr, "[TRAMPOLINE_CHECK] Reached trampoline setup code, call_jit_c2hl=%p\n", call_jit_c2hl);
-	fflush(stderr);
 	if( !call_jit_c2hl ) {
-		fprintf(stderr, "[TRAMPOLINE] Setting up ARM64 trampolines\n");
-		fflush(stderr);
 		hl_setup.static_call = callback_c2hl_arm64;     // C calling HL JIT code
 		hl_setup.get_wrapper = get_wrapper_arm64;      // HL JIT calling C native functions
-		fprintf(stderr, "[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl_arm64)\n", hl_setup.static_call);
-		fprintf(stderr, "[TRAMPOLINE] hl_setup.get_wrapper=%p (get_wrapper_arm64)\n", hl_setup.get_wrapper);
-		fflush(stderr);
 		hl_setup.static_call_ref = false;  // We pass the function pointer directly, not a reference
 		call_jit_c2hl = (void*)1;  // Mark as initialized
 	}
@@ -3760,16 +3737,10 @@ void hl_jit_patch_method( void *old_fun, void **new_fun_table ) {
 
 void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug, hl_module *previous ) {
 #ifdef HL_JIT_X86
-	fprintf(stderr, "[JIT_CODE] Using HL_JIT_X86 path\n");
-	fflush(stderr);
 	return hl_jit_code_x86(ctx, m, codesize, debug, previous);
 #elif defined(HL_JIT_ARM64)
-	fprintf(stderr, "[JIT_CODE] Using HL_JIT_ARM64 path\n");
-	fflush(stderr);
 	return hl_jit_code_arm64(ctx, m, codesize, debug);
 #else
-	fprintf(stderr, "[JIT_CODE] No JIT support detected!\n");
-	fflush(stderr);
 	hl_error("JIT not supported on this architecture");
 	return NULL;
 #endif
@@ -3799,7 +3770,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		int stale_count = 0;
 		jlist *j = ctx->jumps;
 		while (j && stale_count < 5) {
-			printf("WARNING: Stale jump at start of function - pos=0x%x, target=%d\n", j->pos, j->target);
 			j = j->next;
 			stale_count++;
 		}
@@ -4524,7 +4494,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					B32(bl_instr);
 				} else {
 					// Fall back to indirect call if target is too far
-					printf("[OCall0] WARNING: Target too far for BL, using BLR\n");
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
@@ -6410,15 +6379,11 @@ void *hl_jit_code_x86( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos
 	memcpy(code,ctx->startBuf,BUF_POS());
 	*codesize = size;
 	*debug = ctx->debug;
-	printf("[JIT_CODE] Finalizing JIT code: call_jit_c2hl=%p\n", call_jit_c2hl);
 	if( !call_jit_c2hl ) {
-		printf("[TRAMPOLINE] Setting up trampolines: ctx->c2hl=%p, ctx->hl2c=%p\n", (void*)(int_val)ctx->c2hl, (void*)(int_val)ctx->hl2c);
 		call_jit_c2hl = code + ctx->c2hl;
 		call_jit_hl2c = code + ctx->hl2c;
-		printf("[TRAMPOLINE] call_jit_c2hl=%p, call_jit_hl2c=%p\n", call_jit_c2hl, call_jit_hl2c);
 		hl_setup.get_wrapper = get_wrapper;
 		hl_setup.static_call = callback_c2hl;
-		printf("[TRAMPOLINE] hl_setup.static_call=%p (callback_c2hl)\n", hl_setup.static_call);
 		hl_setup.static_call_ref = true;
 #		ifdef JIT_CUSTOM_LONGJUMP
 		hl_setup.throw_jump = (void(*)(jmp_buf, int))(code + ctx->longjump);
@@ -7296,8 +7261,6 @@ static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 	unsigned int *instr = (unsigned int*)(ctx->startBuf + jump_pos);
 	int offset = target_pos - jump_pos;
 
-	printf("[PATCH_BRANCH] jump_pos=%d, target_pos=%d, offset=%d\n", jump_pos, target_pos, offset);
-	printf("[PATCH_BRANCH] Instruction at jump_pos: 0x%08x\n", *instr);
 
 	unsigned int opcode = (*instr >> 24) & 0xFF;
 
