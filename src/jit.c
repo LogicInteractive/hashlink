@@ -3380,13 +3380,17 @@ static int jit_build_arm64( jit_ctx *ctx, void (*fbuild)( jit_ctx *) ) {
 	jit_buf(ctx);
 	// ARM64 requires 4-byte alignment for instructions
 	while (ARM_BUF_POS() & 3) {
-		*ctx->buf.b++ = 0;
+		// Write padding byte and advance buf.w by 1 byte (not 4!)
+		*(unsigned char*)ctx->buf.w = 0;
+		ctx->buf.w = (unsigned int*)((unsigned char*)ctx->buf.w + 1);
 	}
 	pos = ARM_BUF_POS();
 	fbuild(ctx);
 	// Align after as well
 	while (ARM_BUF_POS() & 3) {
-		*ctx->buf.b++ = 0;
+		// Write padding byte and advance buf.w by 1 byte (not 4!)
+		*(unsigned char*)ctx->buf.w = 0;
+		ctx->buf.w = (unsigned int*)((unsigned char*)ctx->buf.w + 1);
 	}
 	return pos;
 }
