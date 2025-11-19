@@ -3822,6 +3822,14 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			r->stackPos = -size;
 		}
 	}
+#elif defined(HL_JIT_ARM64)
+	// ARM64: Arguments come in X0-X7, need stack space for spilling
+	for(i=0;i<nargs;i++) {
+		vreg *r = R(i);
+		size += r->size;
+		size += hl_pad_size(size,r->t);
+		r->stackPos = -size;
+	}
 #endif
 	for(i=nargs;i<f->nregs;i++) {
 		vreg *r = R(i);
