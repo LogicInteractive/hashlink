@@ -3330,7 +3330,7 @@ static void jit_null_access_arm64( jit_ctx *ctx ) {
 	arm_load_imm64(ctx, X9, (uint64_t)jit_fail);
 
 	// Call jit_fail via BLR X9
-	arm_call_native(ctx, X9);  // Native call with X29 fix
+	arm_call_native(ctx, X9);  // Native call
 
 	// This should never return, but add epilogue for safety
 	arm_epilogue(ctx, 16);
@@ -3363,7 +3363,7 @@ static void jit_null_field_access_arm64( jit_ctx *ctx ) {
 	arm_load_imm64(ctx, X9, (uint64_t)jit_null_fail);
 
 	// Call jit_null_fail via BLR X9
-	arm_call_native(ctx, X9);  // Native call with X29 fix
+	arm_call_native(ctx, X9);  // Native call
 
 	// This should never return
 	arm_epilogue(ctx, 16);
@@ -3381,7 +3381,7 @@ static void jit_assert_arm64( jit_ctx *ctx ) {
 	arm_load_imm64(ctx, X9, (uint64_t)jit_fail);
 
 	// Call jit_fail via BLR X9
-	arm_call_native(ctx, X9);  // Native call with X29 fix
+	arm_call_native(ctx, X9);  // Native call
 
 	// This should never return
 	arm_epilogue(ctx, 16);
@@ -3907,6 +3907,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	       hl_to_utf8(f->obj ? f->obj->name : USTR("???")),
 	       ARM_BUF_POS(),
 	       ctx->totalRegsSize + 16);
+
 	arm_prologue(ctx, ctx->totalRegsSize + 16);
 #endif
 #	ifdef HL_64
@@ -3967,11 +3968,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		jit_buf(ctx);
 #ifdef HL_JIT_ARM64
 		ctx->opsPos[opCount + 1] = ARM_BUF_POS();
-		// DEBUG: Log which operations are being compiled
-		if (f->findex == 16) {  // Function 16 is where it crashes
-			fprintf(stderr, "[OP] F%d op#%d: %s (p1=%d p2=%d p3=%d)\n",
-			        f->findex, opCount, hl_op_name(o->op), o->p1, o->p2, o->p3);
-		}
 #else
 		ctx->opsPos[opCount + 1] = BUF_POS();
 #endif
@@ -4539,8 +4535,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				// printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+				arm_call_native(ctx, X9);  // Native method call
 			} else {
 				// JIT function - EAGER JIT + direct BL call
 				// printf("[OCall0] JIT function %d: eager JIT\n", o->p2);
@@ -4605,8 +4600,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+				arm_call_native(ctx, X9);  // Native method call
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4659,8 +4653,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+				arm_call_native(ctx, X9);  // Native method call
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4725,8 +4718,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+				arm_call_native(ctx, X9);  // Native method call
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4783,8 +4775,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+				arm_call_native(ctx, X9);  // Native method call
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -5438,8 +5429,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (isNative) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+				arm_call_native(ctx, X9);  // Native method call
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -5705,8 +5695,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Call hl_dyn_call
 			// printf("[OCallClosure] About to call hl_dyn_call at %p\n", (void*)hl_dyn_call);
 			arm_load_imm64(ctx, X9, (uint64_t)hl_dyn_call);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 
 			// Restore stack
 			// ADD SP, SP, #args_size
@@ -5766,8 +5755,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// NO CONVERSION NEEDED - closure->fun already contains absolute address!
 
 			// Normal case: call the function
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 
 			// Jump over error handler
 			int after_error_jump = arm_do_jump(ctx);
@@ -5778,13 +5766,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			static char null_fn_msg[] = "ERROR: OCallClosure hasValue path - closure->fun is NULL!\n";
 			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg);
 			arm_load_imm64(ctx, X9, (uint64_t)&printf);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 			// Exit
 			arm_movz(ctx, X0, 1, 0, true);  // exit code 1
 			arm_load_imm64(ctx, X9, (uint64_t)&exit);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 
 			// Patch the after-error jump to skip error handler
 			arm_patch_jump(ctx, after_error_jump);
@@ -5818,8 +5804,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// NO CONVERSION NEEDED - closure->fun already contains absolute address!
 
 			// Normal case: call the function
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 
 			// Jump over error handler
 			int after_error_jump2 = arm_do_jump(ctx);
@@ -5829,13 +5814,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			static char null_fn_msg2[] = "ERROR: OCallClosure no-value path - closure->fun is NULL!\n";
 			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg2);
 			arm_load_imm64(ctx, X9, (uint64_t)&printf);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 			// Exit
 			arm_movz(ctx, X0, 1, 0, true);
 			arm_load_imm64(ctx, X9, (uint64_t)&exit);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_call_native(ctx, X9);  // Native method call
 
 			// Patch the after-error jump
 			arm_patch_jump(ctx, after_error_jump2);
@@ -6774,8 +6757,10 @@ static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int s
 	}
 	// Encode as unsigned 9-bit value (two's complement)
 	unsigned int imm9_encoded = imm9 & 0x1FF;
-	// Use 0x39 for LDUR (bit 22 = 1 for load), not 0x38 which is STUR (store)!
-	unsigned int inst = (size << 30) | (0x39 << 24) | (imm9_encoded << 12) |
+	// LDUR (unscaled load) encoding: size(2) 111000 01 imm9(9) 00 Rn(5) Rt(5)
+	// BUG FIX: Was using 0x39 << 24 which generated STR opcode (0xF9)!
+	// Correct encoding: 0x38 << 24 (bits 111000) + (1 << 22) (opc=01 for load)
+	unsigned int inst = (size << 30) | (0x38 << 24) | (1 << 22) | (imm9_encoded << 12) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
@@ -7335,18 +7320,23 @@ static void arm_blr(jit_ctx *ctx, Arm64Reg rn) {
 // This fixes corruption when native functions violate ARM64 AAPCS
 static void arm_call_native(jit_ctx *ctx, Arm64Reg rn) {
 	int pos_before_blr = ARM_BUF_POS();
+
+	// CORRECT FIX: Save X29 before call, restore after
+	// If native functions violate ARM64 ABI and corrupt X29, we need to preserve it.
+	// But we must save the ACTUAL X29 value, not assume it equals SP!
+
+	// Use X28 as temporary to save X29 (X28 is also callee-saved, so safe across call)
+	arm_mov_reg(ctx, X28, X29, true);  // X28 = X29 (backup)
+
+	// Make the call
 	arm_blr(ctx, rn);
+
+	// Restore X29 from backup
+	arm_mov_reg(ctx, X29, X28, true);  // X29 = X28 (restore from backup)
+
 	int pos_after_blr = ARM_BUF_POS();
-
-	// CRITICAL FIX: Restore frame pointer after native call
-	// Some native functions corrupt X29 despite it being callee-saved
-	// In our JIT ABI, X29 always equals SP, so we can safely restore it
-	// Generates: ADD X29, SP, #0  (opcode 0x910003FD)
-	arm_add_imm(ctx, X29, XZR, 0, true);
-	int pos_after_restore = ARM_BUF_POS();
-
-	printf("[arm_call_native] BLR at offset %d (4 bytes), X29 restore at offset %d (4 bytes)\n",
-	       pos_before_blr, pos_after_blr);
+	// printf("[arm_call_native] BLR with X29 save/restore: %d bytes\n",
+	//        pos_after_blr - pos_before_blr);
 }
 
 // RET (return): Return to address in X30 (LR) or specified register
