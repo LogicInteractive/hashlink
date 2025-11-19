@@ -6653,8 +6653,9 @@ static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 }
 
 // LDUR (unscaled offset): Load register from [rn + imm9]
-// Format: size(2) 111 0 00 imm9(9) 00 Rn(5) Rt(5)
+// Format: size(2) 111 0 00 0 1 imm9(9) 00 Rn(5) Rt(5)
 // NOTE: imm9 is a SIGNED 9-bit byte offset (NOT scaled), range -256 to +255
+// CRITICAL: Bit 22 must be 1 for LDUR (load), 0 for STUR (store)
 static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int size) {
 	// Check if offset fits in signed 9 bits
 	if (imm9 < -256 || imm9 > 255) {
@@ -6663,7 +6664,8 @@ static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int s
 	}
 	// Encode as unsigned 9-bit value (two's complement)
 	unsigned int imm9_encoded = imm9 & 0x1FF;
-	unsigned int inst = (size << 30) | (0x38 << 24) | (imm9_encoded << 12) |
+	// Use 0x39 for LDUR (bit 22 = 1 for load), not 0x38 which is STUR (store)!
+	unsigned int inst = (size << 30) | (0x39 << 24) | (imm9_encoded << 12) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
