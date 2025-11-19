@@ -6635,6 +6635,7 @@ static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 	// Bit 22 must be set to 1 for LDR unsigned offset mode
 	unsigned int inst = (size << 30) | (0x39 << 24) | (1 << 22) | (imm12 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
+
 	B32(inst);
 }
 
