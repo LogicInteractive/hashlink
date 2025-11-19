@@ -4462,6 +4462,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
+				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			} else {
 				// JIT function - EAGER JIT + direct BL call
 				// printf("[OCall0] JIT function %d: eager JIT\n", o->p2);
@@ -4497,6 +4498,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 				}
 			}
 
@@ -4521,6 +4523,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
+				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4545,6 +4548,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 				}
 			}
 
@@ -4568,6 +4572,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
+				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4592,6 +4597,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 				}
 			}
 
@@ -4617,6 +4623,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
+				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4641,6 +4648,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 				}
 			}
 
@@ -4668,6 +4676,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
+				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -4692,6 +4701,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 				}
 			}
 
@@ -5316,6 +5326,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				void *fptr = ctx->m->functions_ptrs[o->p2];
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
 				arm_blr(ctx, X9);
+				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
@@ -5345,6 +5356,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					void *target_addr = ctx->startBuf + target_offset;
 					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
 					arm_blr(ctx, X9);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 				}
 			}
 
@@ -5526,6 +5538,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Call the method
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Store result if needed
 			if (dst && dst->t->kind != HVOID) {
@@ -5571,6 +5584,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// printf("[OCallClosure] About to call hl_dyn_call at %p\n", (void*)hl_dyn_call);
 			arm_load_imm64(ctx, X9, (uint64_t)hl_dyn_call);
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Restore stack
 			// ADD SP, SP, #args_size
@@ -5631,6 +5645,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Normal case: call the function
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Jump over error handler
 			int after_error_jump = arm_do_jump(ctx);
@@ -5642,10 +5657,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg);
 			arm_load_imm64(ctx, X9, (uint64_t)&printf);
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			// Exit
 			arm_movz(ctx, X0, 1, 0, true);  // exit code 1
 			arm_load_imm64(ctx, X9, (uint64_t)&exit);
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Patch the after-error jump to skip error handler
 			arm_patch_jump(ctx, after_error_jump);
@@ -5680,6 +5697,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 			// Normal case: call the function
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Jump over error handler
 			int after_error_jump2 = arm_do_jump(ctx);
@@ -5690,10 +5708,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg2);
 			arm_load_imm64(ctx, X9, (uint64_t)&printf);
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 			// Exit
 			arm_movz(ctx, X0, 1, 0, true);
 			arm_load_imm64(ctx, X9, (uint64_t)&exit);
 			arm_blr(ctx, X9);
+			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Patch the after-error jump
 			arm_patch_jump(ctx, after_error_jump2);
