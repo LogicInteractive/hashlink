@@ -3620,15 +3620,28 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	int size = ARM_BUF_POS();
 	unsigned char *code;
 
+	fprintf(stderr, "[ARM64_CODE] Buffer size: %d bytes\n", size);
+	fflush(stderr);
+
 	// Align to page boundary
 	if( size & 4095 ) size += 4096 - (size&4095);
+
+	fprintf(stderr, "[ARM64_CODE] Aligned size: %d bytes\n", size);
+	fflush(stderr);
 
 	// Allocate executable memory
 	code = (unsigned char*)hl_alloc_executable_memory(size);
 	if( code == NULL ) return NULL;
 
+	fprintf(stderr, "[ARM64_CODE] Allocated code at %p\n", code);
+	fflush(stderr);
+
 	// Copy generated code to executable memory
 	memcpy(code,ctx->startBuf,ARM_BUF_POS());
+
+	fprintf(stderr, "[ARM64_CODE] Copied %d bytes to executable memory\n", ARM_BUF_POS());
+	fflush(stderr);
+
 	*codesize = size;
 	*debug = ctx->debug;
 
@@ -3643,6 +3656,8 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	// Patch calls
 	jlist *c = ctx->calls;
 	int patch_count = 0;
+	fprintf(stderr, "[ARM64_CODE] Starting BL instruction patching...\n");
+	fflush(stderr);
 	while( c ) {
 			void *fabs;
 		if( c->target < 0 ) {
@@ -3665,7 +3680,7 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 				int_val delta = (int_val)fabs - (int_val)(code + c->pos);
 			int offset = (int)(delta / 4);  // Offset in instructions
 		patch_count++;
-	
+
 		// Check if offset fits in 26 bits
 		if (offset < -(1<<25) || offset >= (1<<25)) {
 			return NULL;
@@ -3680,9 +3695,13 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 		c = c->next;
 		}
+	fprintf(stderr, "[ARM64_CODE] Patched %d BL instructions\n", patch_count);
+	fflush(stderr);
 
 	vclosure *c_closure = ctx->closure_list;
 	int closure_count = 0;
+	fprintf(stderr, "[ARM64_CODE] Starting closure patching...\n");
+	fflush(stderr);
 	while( c_closure ) {
 		vclosure *next;
 		int fid = (int)(int_val)c_closure->fun;
@@ -3699,6 +3718,8 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 		c_closure = next;
 		closure_count++;
 	}
+	fprintf(stderr, "[ARM64_CODE] Patched %d closures\n", closure_count);
+	fflush(stderr);
 
 
 	// NOTE: Do NOT convert m->functions_ptrs here!
@@ -3716,8 +3737,12 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// ARM64 CRITICAL: Flush instruction cache
 	// Without this, the CPU may execute stale cached instructions
+	fprintf(stderr, "[ARM64_CODE] Flushing instruction cache for %d bytes\n", ARM_BUF_POS());
+	fflush(stderr);
 	__builtin___clear_cache((char*)code, (char*)code + ARM_BUF_POS());
 
+	fprintf(stderr, "[ARM64_CODE] hl_jit_code_arm64 complete! Returning %p\n", code);
+	fflush(stderr);
 	return code;
 }
 
@@ -3942,6 +3967,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		jit_buf(ctx);
 #ifdef HL_JIT_ARM64
 		ctx->opsPos[opCount + 1] = ARM_BUF_POS();
+		// DEBUG: Log which operations are being compiled
+		if (f->findex == 16) {  // Function 16 is where it crashes
+			fprintf(stderr, "[OP] F%d op#%d: %s (p1=%d p2=%d p3=%d)\n",
+			        f->findex, opCount, hl_op_name(o->op), o->p1, o->p2, o->p3);
+		}
 #else
 		ctx->opsPos[opCount + 1] = BUF_POS();
 #endif
@@ -4433,6 +4463,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X11, ra);   // Load value to store
 			// Field offset stored in o->p2
 			int field_offset = o->p2 * HL_WSIZE;
+			// DEBUG: Check for obviously wrong field offset
+			if (o->p2 > 100) {
+				fprintf(stderr, "[BUG!] OSetField F%d: p2=%d (field_offset=%d) - TOO LARGE!\n",
+				        f->findex, o->p2, field_offset);
+			}
 			if (field_offset >= 0 && field_offset < 32768) {
 				arm_str_imm(ctx, X11, X10, field_offset / 8, 3);  // Scaled offset
 			} else {
@@ -4516,6 +4551,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					if (target_f->findex == 16) {
+						fprintf(stderr, "[RECURSIVE] OCall0: F%d triggering F16 compilation at buffer pos %d\n",
+							ctx->f->findex, ARM_BUF_POS());
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
@@ -4574,6 +4613,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					if (target_f->findex == 16) {
+						fprintf(stderr, "[RECURSIVE] OCall1: F%d triggering F16 compilation at buffer pos %d\n",
+							ctx->f->findex, ARM_BUF_POS());
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
@@ -4624,7 +4667,21 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					if (target_f->findex == 16) {
+						int buf_before = ARM_BUF_POS();
+						fprintf(stderr, "[RECURSIVE] OCall2: F%d (at pos %d) triggering F16 compilation\n",
+							ctx->f->findex, buf_before);
+						fprintf(stderr, "[RECURSIVE]   ctx->currentPos = %d, saved_currentPos = %d\n",
+							ctx->currentPos, saved_currentPos);
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
+					if (target_f->findex == 16) {
+						int buf_after = ARM_BUF_POS();
+						fprintf(stderr, "[RECURSIVE] OCall2: F16 compiled, buffer pos now %d, returning to F%d\n",
+							buf_after, saved_f->findex);
+						fprintf(stderr, "[RECURSIVE]   ctx->currentPos = %d, restoring to %d\n",
+							ctx->currentPos, saved_currentPos);
+					}
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
 				}
@@ -4676,6 +4733,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					if (target_f->findex == 16) {
+						fprintf(stderr, "[RECURSIVE] OCall3: F%d triggering F16 compilation at buffer pos %d\n",
+							ctx->f->findex, ARM_BUF_POS());
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
@@ -4730,6 +4791,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					if (target_f->findex == 16) {
+						fprintf(stderr, "[RECURSIVE] OCall4: F%d triggering F16 compilation at buffer pos %d\n",
+							ctx->f->findex, ARM_BUF_POS());
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
@@ -5384,6 +5449,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					int saved_currentPos = ctx->currentPos;
 
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
+					if (target_f->findex == 16) {
+						fprintf(stderr, "[RECURSIVE] OCallN: F%d triggering F16 compilation at buffer pos %d\n",
+							ctx->f->findex, ARM_BUF_POS());
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
 
 					// Restore our function context after recursive compilation
@@ -5476,6 +5545,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
 					hl_function *target_f = m->code->functions + m->functions_indexes[findex];
+					if (target_f->findex == 16) {
+						fprintf(stderr, "[RECURSIVE] OCallMethod: F%d triggering F16 compilation at buffer pos %d\n",
+							ctx->f->findex, ARM_BUF_POS());
+					}
 					hl_jit_function(ctx, ctx->m, target_f);
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
@@ -6677,6 +6750,12 @@ static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 		ASSERT(6);
 		return;
 	}
+
+	// DEBUG: Log ALL STR instructions
+	unsigned int byte_offset = imm12 << size;
+	fprintf(stderr, "[STR] rt=X%d rn=X%d imm12=%u byte_offset=%u pos=%d\n",
+	        arm_reg(rt), arm_reg(rn), imm12, byte_offset, ARM_BUF_POS());
+
 	// Use 0x38 for STR (bit 24 = 0 for store), not 0x39 which is LDR (load)!
 	unsigned int inst = (size << 30) | (0x38 << 24) | (imm12 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
@@ -7566,3 +7645,12 @@ static int arm_arg_stack_offset(int arg_index) {
 }
 
 #endif // HL_JIT_ARM64
+
+// Helper function to get current buffer position (for debugging)
+int hl_jit_buf_pos( jit_ctx *ctx ) {
+#ifdef HL_JIT_ARM64
+	return ARM_BUF_POS();
+#else
+	return BUF_POS();
+#endif
+}

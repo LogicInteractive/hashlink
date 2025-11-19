@@ -670,10 +670,26 @@ int hl_module_init( hl_module *m, h_bool hot_reload ) {
 	hl_jit_init(ctx, m);
 	for(i=0;i<m->code->nfunctions;i++) {
 		hl_function *f = m->code->functions + i;
+		// DEBUG: Track Function 16 boundaries
+		if (f->findex == 16) {
+			int buf_pos = hl_jit_buf_pos(ctx);
+			fprintf(stderr, "[F16] BEFORE compilation: buffer pos = %d\n", buf_pos);
+		}
 		int fpos = hl_jit_function(ctx, m, f);
 		if( fpos < 0 ) {
 			hl_jit_free(ctx, false);
 			return 0;
+		}
+		// DEBUG: Track Function 16 boundaries
+		if (f->findex == 16) {
+			int end_pos = hl_jit_buf_pos(ctx);
+			fprintf(stderr, "[F16] AFTER compilation: fpos=%d, end_pos=%d, size=%d bytes\n",
+				fpos, end_pos, end_pos - fpos);
+		}
+		// DEBUG: Also track Function 17 start to see if there's overlap
+		if (f->findex == 17) {
+			fprintf(stderr, "[F17] Function 17 starts at buffer pos = %d\n",
+				fpos);
 		}
 		m->functions_ptrs[f->findex] = (void*)(int_val)fpos;
 	}
