@@ -6639,15 +6639,16 @@ static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 }
 
 // STR (unsigned offset): Store register to [rn + (imm12 << size)]
-// Format: size(2) 111 0 01 00 imm12(12) Rn(5) Rt(5)
+// Format: size(2) 111 0 00 imm12(12) Rn(5) Rt(5)
 // NOTE: imm12 is already scaled (offset in units of access size)
-// Bits 23-22 = 00 for STR (different from LDR which uses 01)
+// CRITICAL: Bit 24 must be 0 for STR (store), 1 for LDR (load)
 static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
 	if (!arm_fits_unsigned(imm12, 12)) {
 		ASSERT(6);
 		return;
 	}
-	unsigned int inst = (size << 30) | (0x39 << 24) | (0 << 22) | (imm12 << 10) |
+	// Use 0x38 for STR (bit 24 = 0 for store), not 0x39 which is LDR (load)!
+	unsigned int inst = (size << 30) | (0x38 << 24) | (imm12 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
