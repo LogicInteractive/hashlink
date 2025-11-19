@@ -617,18 +617,12 @@ static int stack_size( hl_type *t ) {
 }
 
 static void register_jump( jit_ctx *ctx, int pos, int target ) {
-	// Validate jump target is within function bounds
-	if (target < 0 || target > ctx->f->nops) {
-		// Invalid jump target - skip registration
-		// This should not happen with correct bytecode interpretation
-		return;
-	}
 	jlist *j = (jlist*)hl_malloc(&ctx->falloc, sizeof(jlist));
 	j->pos = pos;
 	j->target = target;
 	j->next = ctx->jumps;
 	ctx->jumps = j;
-	if( target > 0 && target < ctx->f->nops && ctx->opsPos[target] == 0 )
+	if( target != 0 && ctx->opsPos[target] == 0 )
 		ctx->opsPos[target] = -1;
 }
 
@@ -2615,25 +2609,16 @@ void hl_jit_free( jit_ctx *ctx, h_bool can_reset ) {
 	if( !can_reset ) free(ctx);
 }
 
-// Dynamic call trampolines (shared between x86 and ARM64)
-#define MAX_ARGS 16
-static void *call_jit_c2hl = NULL;
-static void *call_jit_hl2c = NULL;
-
-// External HL runtime functions
-HL_PRIM vdynamic *hl_type_get_global( hl_type *t );
-
-// Forward declarations for x86
-#ifndef HL_JIT_ARM64
-static void *callback_c2hl( void *_f, hl_type *t, void **args, vdynamic *ret );
-static void *get_wrapper( hl_type *t );
-#endif
-
 #ifdef HL_JIT_X86
 static void jit_nops( jit_ctx *ctx ) {
 	while( BUF_POS() & 15 )
 		op32(ctx, NOP, UNUSED, UNUSED);
 }
+
+#define MAX_ARGS 16
+
+static void *call_jit_c2hl = NULL;
+static void *call_jit_hl2c = NULL;
 
 static void *callback_c2hl( void *_f, hl_type *t, void **args, vdynamic *ret ) {
 	/*
@@ -3210,13 +3195,6 @@ static vclosure *alloc_static_closure( jit_ctx *ctx, int fid ) {
 #ifdef HL_JIT_ARM64
 static void arm_stp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
 static void arm_ldp(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset, bool is64, bool pre_index);
-// Helper wrappers for common STP/LDP modes
-static inline void arm_stp_pre(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset) {
-	arm_stp(ctx, rt, rt2, rn, offset, true, true);
-}
-static inline void arm_ldp_post(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rt2, Arm64Reg rn, int offset) {
-	arm_ldp(ctx, rt, rt2, rn, offset, true, false);  // post-index mode
-}
 static void arm_add_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
 static void arm_add_imm(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, unsigned int imm12, bool is64);
 static void arm_sub_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rn, Arm64Reg rm, bool is64);
@@ -3259,10 +3237,8 @@ static void arm_fcvtzs(jit_ctx *ctx, Arm64Reg rd, Arm64FpReg fn, bool int64, boo
 static void arm_fcvt(jit_ctx *ctx, Arm64FpReg fd, Arm64FpReg fn, bool src64);
 static void arm_patch_cbnz(jit_ctx *ctx, int pos, int target);
 static void arm_patch_jump(jit_ctx *ctx, int jump_pos);
-static void arm_patch_jump_to(jit_ctx *ctx, int jump_pos, int target_pos);
 static void arm_cmp_imm(jit_ctx *ctx, Arm64Reg rn, unsigned int imm12, bool is64);
 static void arm_blr(jit_ctx *ctx, Arm64Reg rn);
-static void arm_call_native(jit_ctx *ctx, Arm64Reg rn);
 static void register_jump(jit_ctx *ctx, int jump_pos, int target);
 static void arm_prologue(jit_ctx *ctx, int framesize);
 static void arm_epilogue(jit_ctx *ctx, int framesize);
@@ -3317,7 +3293,7 @@ static void jit_null_access_arm64( jit_ctx *ctx ) {
 	arm_load_imm64(ctx, X9, (uint64_t)jit_fail);
 
 	// Call jit_fail via BLR X9
-	arm_call_native(ctx, X9);  // Native call with X29 fix
+	arm_blr(ctx, X9);
 
 	// This should never return, but add epilogue for safety
 	arm_epilogue(ctx, 16);
@@ -3350,7 +3326,7 @@ static void jit_null_field_access_arm64( jit_ctx *ctx ) {
 	arm_load_imm64(ctx, X9, (uint64_t)jit_null_fail);
 
 	// Call jit_null_fail via BLR X9
-	arm_call_native(ctx, X9);  // Native call with X29 fix
+	arm_blr(ctx, X9);
 
 	// This should never return
 	arm_epilogue(ctx, 16);
@@ -3368,7 +3344,7 @@ static void jit_assert_arm64( jit_ctx *ctx ) {
 	arm_load_imm64(ctx, X9, (uint64_t)jit_fail);
 
 	// Call jit_fail via BLR X9
-	arm_call_native(ctx, X9);  // Native call with X29 fix
+	arm_blr(ctx, X9);
 
 	// This should never return
 	arm_epilogue(ctx, 16);
@@ -3391,161 +3367,10 @@ static int jit_build_arm64( jit_ctx *ctx, void (*fbuild)( jit_ctx *) ) {
 	return pos;
 }
 
-// ARM64 argument layout for trampoline
-typedef struct {
-	int64_t iargs[8];   // 64 bytes: X0-X7 integer/pointer arguments
-	double  fargs[8];   // 64 bytes: V0-V7 float/double arguments (stored as doubles)
-} hl_vargs;
-
-// ARM64 low-level trampoline: loads args from hl_vargs and calls closure
-// This is the actual assembly code that sets up registers and calls the function
-static void* jit_c2hl_arm64_trampoline(void* closure, hl_vargs* vargs) {
-	register void* result;
-	__asm__ volatile (
-		// Save callee-saved integer regs (X19–X28) and FP/LR
-		"stp x29, x30, [sp, #-160]!\n"   // pre-index, make 160-byte frame
-		"stp x27, x28, [sp, #16]\n"
-		"stp x25, x26, [sp, #32]\n"
-		"stp x23, x24, [sp, #48]\n"
-		"stp x21, x22, [sp, #64]\n"
-		"stp x19, x20, [sp, #80]\n"
-		"mov x29, sp\n"                  // set frame pointer
-
-		// x0 = function pointer (already in x0 from caller)
-		// x1 = pointer to hl_vargs* on stack (passed by caller)
-		"mov x20, x0\n"                  // save function pointer (before we overwrite x0!)
-		"mov x19, x1\n"                  // save args pointer
-
-		// Load first 8 integer args from hl_vargs* into x0–x7
-		"ldp x0, x1, [x19, #0]\n"
-		"ldp x2, x3, [x19, #16]\n"
-		"ldp x4, x5, [x19, #32]\n"
-		"ldp x6, x7, [x19, #48]\n"
-
-		// Load first 8 float/double args into v0–v7
-		"ldp q0, q1, [x19, #64]\n"
-		"ldp q2, q3, [x19, #96]\n"
-		"ldp q4, q5, [x19, #128]\n"
-		"ldp q6, q7, [x19, #160]\n"
-
-		// Call the function pointer directly (it's in x20)
-		"blr x20\n"
-
-		// Return value is in x0
-		"mov %[result], x0\n"
-
-		// Restore callee-saved regs
-		"ldp x19, x20, [sp, #80]\n"
-		"ldp x21, x22, [sp, #64]\n"
-		"ldp x23, x24, [sp, #48]\n"
-		"ldp x25, x26, [sp, #32]\n"
-		"ldp x27, x28, [sp, #16]\n"
-		"ldp x29, x30, [sp], #160\n"
-		: [result] "=r" (result)
-		: "r" (closure), "r" (vargs)
-		: "x1","x2","x3","x4","x5","x6","x7","x8","x9","x19","x20","memory"
-	);
-	return result;
-}
-
-// ARM64 high-level callback wrapper for hl_setup.static_call
-// Converts from static_call signature to trampoline signature
-static void *callback_c2hl_arm64( void *_f, hl_type *t, void **args, vdynamic *ret ) {
-	hl_vargs vargs = {0};
-	int i;
-
-	if( t->fun->nargs > 8 )
-		hl_error("Too many arguments for dynamic call (ARM64 supports up to 8)");
-
-	// Prepare arguments in hl_vargs structure
-	for(i=0;i<t->fun->nargs;i++) {
-		hl_type *at = t->fun->args[i];
-		void *v = args[i];
-
-		// For now, treat all args as 64-bit values in integer registers
-		// TODO: proper handling of float vs int registers based on type
-		switch( at->kind ) {
-		case HBOOL:
-		case HUI8:
-			vargs.iargs[i] = *(unsigned char*)v;
-			break;
-		case HUI16:
-			vargs.iargs[i] = *(unsigned short*)v;
-			break;
-		case HI32:
-			vargs.iargs[i] = *(int*)v;
-			break;
-		case HF32:
-			vargs.fargs[i] = *(float*)v;
-			break;
-		case HF64:
-			vargs.fargs[i] = *(double*)v;
-			break;
-		case HI64:
-		case HGUID:
-			vargs.iargs[i] = *(int64*)v;
-			break;
-		default:
-			vargs.iargs[i] = (int64_t)v;
-			break;
-		}
-	}
-
-	// Call the low-level trampoline
-	// _f is the function pointer (cl->fun) passed directly
-	return jit_c2hl_arm64_trampoline(_f, &vargs);
-}
-
-// ARM64 HL → C trampoline (for native calls from JIT code)
-// Signature: vclosure* c, void** args, int nargs, bool ret_void
-static void* jit_hl2c_arm64(vclosure* c, void** args, int nargs, bool ret_void) {
-	register void* result __asm__("x0");
-
-	__asm__ volatile (
-		// Save callee-saved + LR
-		"stp x29, x30, [sp, #-96]!\n"
-		"stp x19, x20, [sp, #16]\n"
-		"stp x21, x22, [sp, #32]\n"
-		"mov x29, sp\n"
-
-		// Move args to x0–x7
-		"ldr x0, [%[args], #0]\n"
-		"cmp %w[nargs], #1\n" "ble 1f\n"
-		"ldr x1, [%[args], #8]\n"
-		"cmp %w[nargs], #2\n" "ble 1f\n"
-		"ldr x2, [%[args], #16]\n"
-		// ... add up to x7 if you want, or loop — 8 is enough for 99%%
-
-		"1:\n"
-		"ldr x9, [%[c], #8]\n"    // c->fun
-		"blr x9\n"
-
-		"mov %[result], x0\n"
-
-		// Restore
-		"ldp x21, x22, [sp, #32]\n"
-		"ldp x19, x20, [sp, #16]\n"
-		"ldp x29, x30, [sp], #96\n"
-		: [result] "=r" (result)
-		: [c] "r" (c), [args] "r" (args), [nargs] "r" (nargs)
-		: "x1","x2","x3","x4","x5","x6","x7","x8","x9","memory"
-	);
-
-	return result;
-}
-
-// ARM64 wrapper function for get_wrapper callback
-static void *get_wrapper_arm64( hl_type *t ) {
-	return (void*)jit_hl2c_arm64;
-}
-
 // ARM64 JIT initialization
 void hl_jit_init_arm64( jit_ctx *ctx ) {
-	// Trampolines are now regular C functions with inline assembly
-	// No need to build them as JIT code
-	// They will be set up in hl_jit_code_arm64
-
-	// Build error handlers
+	// Note: We don't need c2hl/hl2c trampolines for ARM64 yet
+	// as closures are not implemented. We just need error handlers.
 	ctx->static_functions[0] = (void*)(int_val)jit_build_arm64(ctx,jit_null_access_arm64);
 	ctx->static_functions[1] = (void*)(int_val)jit_build_arm64(ctx,jit_assert_arm64);
 	ctx->static_functions[2] = (void*)(int_val)jit_build_arm64(ctx,jit_null_field_access_arm64);
@@ -3598,8 +3423,6 @@ void hl_jit_patch_method_arm64( void *old_fun, void **new_fun_table ) {
 
 // ARM64 code generation
 void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug ) {
-	fprintf(stderr, "[ARM64_CODE] hl_jit_code_arm64 called!\n");
-	fflush(stderr);
 	int size = BUF_POS();
 	unsigned char *code;
 
@@ -3617,17 +3440,16 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// Convert static function offsets to absolute addresses
 	if( !ctx->static_function_offset ) {
-			int i;
+		int i;
 		ctx->static_function_offset = true;
 		for(i=0;i<(int)(sizeof(ctx->static_functions)/sizeof(void*));i++)
 			ctx->static_functions[i] = (void*)(code + (int)(int_val)ctx->static_functions[i]);
-		}
+	}
 
 	// Patch calls
 	jlist *c = ctx->calls;
-	int patch_count = 0;
 	while( c ) {
-			void *fabs;
+		void *fabs;
 		if( c->target < 0 ) {
 			// Static function (error handlers)
 			fabs = ctx->static_functions[-c->target-1];
@@ -3637,69 +3459,62 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 			if( fabs == NULL ) {
 				// TODO: Handle previous module lookups
 				return NULL;
+			} else {
+				// Convert relative offset to absolute address
+				fabs = (unsigned char*)code + (int)(int_val)fabs;
 			}
-			// At this point, fabs is a relative offset - convert to absolute
-			fabs = (unsigned char*)code + (int)(int_val)fabs;
 		}
 
 		// Patch the BL instruction
 		// BL encoding: imm26 is signed offset / 4
-			unsigned int *instr = (unsigned int*)(code + c->pos);
-				int_val delta = (int_val)fabs - (int_val)(code + c->pos);
-			int offset = (int)(delta / 4);  // Offset in instructions
-		patch_count++;
-	
+		unsigned int *instr = (unsigned int*)(code + c->pos);
+		int_val delta = (int_val)fabs - (int_val)(code + c->pos);
+		int offset = (int)(delta / 4);  // Offset in instructions
+
 		// Check if offset fits in 26 bits
 		if (offset < -(1<<25) || offset >= (1<<25)) {
+			printf("Target code too far to rebase\n");
 			return NULL;
 		}
 
-			// Update BL instruction: keep top 6 bits, replace bottom 26 bits
-		unsigned int new_instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
-		*instr = new_instr;
-
-		// Flush instruction cache for this specific instruction
-		__builtin___clear_cache((char*)instr, (char*)instr + 4);
+		// Update BL instruction: keep top 6 bits, replace bottom 26 bits
+		*instr = (*instr & 0xFC000000) | (offset & 0x03FFFFFF);
 
 		c = c->next;
+	}
+
+	// Patch jumps (conditional branches, etc.)
+	jlist *j = ctx->jumps;
+	while( j ) {
+		int target_pos = ctx->opsPos[j->target];
+		if( target_pos == 0 && j->target != 0 ) {
+			printf("Invalid jump target\n");
+			return NULL;
 		}
 
+		// Call the appropriate ARM64 patch function
+		// Note: The instruction type was stored at the jump position
+		arm_patch_jump(ctx, j->pos);
+
+		j = j->next;
+	}
+
+	// Patch closures
 	vclosure *c_closure = ctx->closure_list;
-	int closure_count = 0;
 	while( c_closure ) {
 		vclosure *next;
 		int fid = (int)(int_val)c_closure->fun;
 		void *fabs = m->functions_ptrs[fid];
 		if( fabs == NULL ) {
-			printf("ERROR: NULL offset!\n");
+			printf("Closure function not found\n");
 			return NULL;
 		}
 		fabs = (unsigned char*)code + (int)(int_val)fabs;
 		c_closure->fun = fabs;
-		printf("absolute=%p\n", fabs);
 		next = (vclosure*)c_closure->value;
 		c_closure->value = NULL;
 		c_closure = next;
-		closure_count++;
 	}
-
-
-	// NOTE: Do NOT convert m->functions_ptrs here!
-	// module.c will convert them after hl_jit_code returns (see module.c:686-688)
-	// Converting them here would cause DOUBLE CONVERSION (offset → addr → garbage)!
-
-	// Set up dynamic call trampolines (C <-> HL calling convention conversion)
-	// These are now regular C functions with inline assembly
-	if( !call_jit_c2hl ) {
-		hl_setup.static_call = callback_c2hl_arm64;     // C calling HL JIT code
-		hl_setup.get_wrapper = get_wrapper_arm64;      // HL JIT calling C native functions
-		hl_setup.static_call_ref = false;  // We pass the function pointer directly, not a reference
-		call_jit_c2hl = (void*)1;  // Mark as initialized
-	}
-
-	// ARM64 CRITICAL: Flush instruction cache
-	// Without this, the CPU may execute stale cached instructions
-	__builtin___clear_cache((char*)code, (char*)code + BUF_POS());
 
 	return code;
 }
@@ -3765,18 +3580,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #endif
 	ctx->f = f;
 	ctx->allocOffset = 0;
-#ifdef HL_JIT_ARM64
-	// Debug: Check if jump list has stale entries
-	if (ctx->jumps != NULL) {
-		int stale_count = 0;
-		jlist *j = ctx->jumps;
-		while (j && stale_count < 5) {
-			j = j->next;
-			stale_count++;
-		}
-	}
-#endif
-	ctx->jumps = NULL;  // Clear jump list for this function (ARM64)
 	if( f->nregs > ctx->maxRegs ) {
 		free(ctx->vregs);
 		ctx->vregs = (vreg*)malloc(sizeof(vreg) * (f->nregs + 1));
@@ -3822,14 +3625,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			r->stackPos = -size;
 		}
 	}
-#elif defined(HL_JIT_ARM64)
-	// ARM64: Arguments come in X0-X7, need stack space for spilling
-	for(i=0;i<nargs;i++) {
-		vreg *r = R(i);
-		size += r->size;
-		size += hl_pad_size(size,r->t);
-		r->stackPos = -size;
-	}
 #endif
 	for(i=nargs;i<f->nregs;i++) {
 		vreg *r = R(i);
@@ -3845,27 +3640,13 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	ctx->totalRegsSize = size;
 	jit_buf(ctx);
 	ctx->functionPos = BUF_POS();
-
-#ifdef HL_JIT_ARM64
-	// CRITICAL FIX: Set function pointer EARLY for eager JIT compilation
-	// This allows recursive calls and forward calls to see this function's address
-	// Even though the function body isn't generated yet, the address is valid
-	m->functions_ptrs[f->findex] = (void*)(int_val)BUF_POS();
-#endif
-
 	// make sure currentPos is > 0 before any reg allocations happen
 	// otherwise `alloc_reg` thinks that all registers are locked
 	ctx->currentPos = 1;
 #ifdef HL_JIT_X86
 	op_enter(ctx);
 #elif defined(HL_JIT_ARM64)
-	// ARM64: totalRegsSize is space for locals; we need +16 for saved FP/LR
-	printf("[JIT] Function %d (%s) at offset 0x%x, framesize=%d\n",
-	       f->findex,
-	       hl_to_utf8(f->obj ? f->obj->name : USTR("???")),
-	       BUF_POS(),
-	       ctx->totalRegsSize + 16);
-	arm_prologue(ctx, ctx->totalRegsSize + 16);
+	arm_prologue(ctx, ctx->totalRegsSize);
 #endif
 #	ifdef HL_64
 #	 ifdef HL_JIT_X86
@@ -4461,65 +4242,25 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Load return value into X0
 			LOAD_VREG(X0, dst);
 		}
-		// Restore frame and return (arm_epilogue includes RET instruction)
-		arm_epilogue(ctx, ctx->totalRegsSize + 16);
+		// Restore frame and return
+		arm_epilogue(ctx, ctx->totalRegsSize);
+		arm_ret(ctx, X30);
 		break;
 	case OCall0:
 		// Call function with 0 arguments
 		{
-			int fid = ctx->m->functions_indexes[o->p2];
-			bool isNative = fid >= ctx->m->code->nfunctions;
-
-			if (isNative) {
-				// Native function - use BLR with absolute address
-				void *fptr = ctx->m->functions_ptrs[o->p2];
-				// printf("[OCall0] Native function %d: fptr=%p\n", o->p2, fptr);
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load function pointer into X9
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			} else {
-				// JIT function - EAGER JIT + direct BL call
-				// printf("[OCall0] JIT function %d: eager JIT\n", o->p2);
 
-				// Eagerly JIT the callee if not compiled yet
-				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					// printf("[OCall0] Eagerly JITing function %d\n", o->p2);
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
-					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					hl_jit_function(ctx, ctx->m, target_f);
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
 				}
-
-				// Get target offset (now guaranteed to be non-NULL)
-				// NOTE: functions_ptrs stores OFFSETS from ctx->startBuf, not absolute addresses!
-				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
-				int_val delta = target_offset - call_site_offset;
-
-				// printf("[OCall0] Direct BL: target_offset=0x%lx, call_site_offset=0x%x, delta=%ld\n",
-				//        target_offset, call_site_offset, delta);
-
-				// Check if offset fits in 26-bit signed immediate (±128 MB range)
-				if (delta >= -134217728LL && delta < 134217728LL) {
-					// Emit direct BL instruction
-					int offset = (int)(delta / 4);
-					unsigned int bl_instr = 0x94000000 | (offset & 0x03FFFFFF);
-					B32(bl_instr);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
-				} else {
-					// Fall back to indirect call if target is too far
-					void *target_addr = ctx->startBuf + target_offset;
-					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
-					arm_blr(ctx, X9);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-				}
-			}
-
-			// Store result if needed
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -4527,205 +4268,108 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OCall1:
 		// Call function with 1 argument
 		{
-			int fid = ctx->m->functions_indexes[o->p2];
-			bool isNative = fid >= ctx->m->code->nfunctions;
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load argument into X0
+				vreg *arg = R(o->p3);
+				if (arg) {
+					LOAD_VREG(X0, arg);
+				}
 
-			// Load argument into X0
-			vreg *arg = R(o->p3);
-			if (arg) LOAD_VREG(X0, arg);
-
-			if (isNative) {
-				void *fptr = ctx->m->functions_ptrs[o->p2];
+				// Load function pointer into X9
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			} else {
-				// JIT function - EAGER JIT + direct BL
-				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
-					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					hl_jit_function(ctx, ctx->m, target_f);
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
 				}
-
-				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
-				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
-				int_val delta = target_offset - call_site_offset;
-
-				if (delta >= -134217728LL && delta < 134217728LL) {
-					int offset = (int)(delta / 4);
-					B32(0x94000000 | (offset & 0x03FFFFFF));
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
-				} else {
-					// Fall back to indirect call
-					void *target_addr = ctx->startBuf + target_offset;
-					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
-					arm_blr(ctx, X9);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-				}
-			}
-
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
 			}
 		}
 		break;
 
 	case OCall2:
+		// Call function with 2 arguments
 		{
-			int fid = ctx->m->functions_indexes[o->p2];
-			bool isNative = fid >= ctx->m->code->nfunctions;
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load arguments into X0, X1
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = R((int)(int_val)o->extra);
 
-			vreg *arg0 = R(o->p3);
-			vreg *arg1 = R((int)(int_val)o->extra);
-			if (arg0) LOAD_VREG(X0, arg0);
-			if (arg1) LOAD_VREG(X1, arg1);
+				if (arg0) LOAD_VREG(X0, arg0);
+				if (arg1) LOAD_VREG(X1, arg1);
 
-			if (isNative) {
-				void *fptr = ctx->m->functions_ptrs[o->p2];
+				// Load function pointer into X9
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			} else {
-				// JIT function - EAGER JIT + direct BL
-				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
-					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					hl_jit_function(ctx, ctx->m, target_f);
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
 				}
-
-				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
-				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
-				int_val delta = target_offset - call_site_offset;
-
-				if (delta >= -134217728LL && delta < 134217728LL) {
-					int offset = (int)(delta / 4);
-					B32(0x94000000 | (offset & 0x03FFFFFF));
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
-				} else {
-					// Fall back to indirect call
-					void *target_addr = ctx->startBuf + target_offset;
-					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
-					arm_blr(ctx, X9);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-				}
-			}
-
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
 			}
 		}
 		break;
 
 	case OCall3:
+		// Call function with 3 arguments
 		{
-			int fid = ctx->m->functions_indexes[o->p2];
-			bool isNative = fid >= ctx->m->code->nfunctions;
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load arguments into X0, X1, X2
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
+				vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
 
-			vreg *arg0 = R(o->p3);
-			vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
-			vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
-			if (arg0) LOAD_VREG(X0, arg0);
-			if (arg1) LOAD_VREG(X1, arg1);
-			if (arg2) LOAD_VREG(X2, arg2);
+				if (arg0) LOAD_VREG(X0, arg0);
+				if (arg1) LOAD_VREG(X1, arg1);
+				if (arg2) LOAD_VREG(X2, arg2);
 
-			if (isNative) {
-				void *fptr = ctx->m->functions_ptrs[o->p2];
+				// Load function pointer into X9
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			} else {
-				// JIT function - EAGER JIT + direct BL
-				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
-					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					hl_jit_function(ctx, ctx->m, target_f);
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
 				}
-
-				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
-				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
-				int_val delta = target_offset - call_site_offset;
-
-				if (delta >= -134217728LL && delta < 134217728LL) {
-					int offset = (int)(delta / 4);
-					B32(0x94000000 | (offset & 0x03FFFFFF));
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
-				} else {
-					// Fall back to indirect call
-					void *target_addr = ctx->startBuf + target_offset;
-					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
-					arm_blr(ctx, X9);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-				}
-			}
-
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
 			}
 		}
 		break;
 
 	case OCall4:
+		// Call function with 4 arguments
 		{
-			int fid = ctx->m->functions_indexes[o->p2];
-			bool isNative = fid >= ctx->m->code->nfunctions;
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				// Load arguments into X0, X1, X2, X3
+				vreg *arg0 = R(o->p3);
+				vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
+				vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
+				vreg *arg3 = o->extra ? R(o->extra[2]) : NULL;
 
-			vreg *arg0 = R(o->p3);
-			vreg *arg1 = o->extra ? R(o->extra[0]) : NULL;
-			vreg *arg2 = o->extra ? R(o->extra[1]) : NULL;
-			vreg *arg3 = o->extra ? R(o->extra[2]) : NULL;
-			if (arg0) LOAD_VREG(X0, arg0);
-			if (arg1) LOAD_VREG(X1, arg1);
-			if (arg2) LOAD_VREG(X2, arg2);
-			if (arg3) LOAD_VREG(X3, arg3);
+				if (arg0) LOAD_VREG(X0, arg0);
+				if (arg1) LOAD_VREG(X1, arg1);
+				if (arg2) LOAD_VREG(X2, arg2);
+				if (arg3) LOAD_VREG(X3, arg3);
 
-			if (isNative) {
-				void *fptr = ctx->m->functions_ptrs[o->p2];
+				// Load function pointer into X9
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			} else {
-				// JIT function - EAGER JIT + direct BL
-				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
-					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					hl_jit_function(ctx, ctx->m, target_f);
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+
+				// BLR X9
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					STORE_VREG(X0, dst);
 				}
-
-				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
-				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
-				int_val delta = target_offset - call_site_offset;
-
-				if (delta >= -134217728LL && delta < 134217728LL) {
-					int offset = (int)(delta / 4);
-					B32(0x94000000 | (offset & 0x03FFFFFF));
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
-				} else {
-					// Fall back to indirect call
-					void *target_addr = ctx->startBuf + target_offset;
-					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
-					arm_blr(ctx, X9);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-				}
-			}
-
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -4894,16 +4538,16 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 	case OGetGlobal:
 		// dst = global[p2]
-		// Match x86 implementation: just load from global address for all types
 		{
 			hl_module *m = ctx->m;
-			void *gaddr = (void*)(m->globals_data + m->globals_indexes[o->p2]);
-
-			// Load global address into X10, then load value from that address
-			arm_load_imm64(ctx, X10, (uint64_t)gaddr);
-			arm_ldr_imm(ctx, X10, X10, 0, 3);   // 64-bit load
+			void *addr = m->globals_data + m->globals_indexes[o->p2];
+			// Load global address into X10
+			arm_load_imm64(ctx, X10, (uint64_t)addr);
+			// Load value from [X10]
+			arm_ldr_imm(ctx, X11, X10, 0, 3);  // 64-bit load
+			// Store to destination
 			if (dst) {
-				STORE_VREG(X10, dst);
+				STORE_VREG(X11, dst);
 			}
 		}
 		break;
@@ -5329,59 +4973,30 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OCallN:
 		{
-			int fid = ctx->m->functions_indexes[o->p2];
-			bool isNative = fid >= ctx->m->code->nfunctions;
-			int nargs = o->p3;
+			// Function call with N arguments (p3 = arg count, extra = arg registers)
+			void *fptr = m->functions_ptrs[o->p2];
+			if (fptr) {
+				int nargs = o->p3;
 
-			// Move arguments to X0-X7
-			for (int i = 0; i < nargs && i < 8; i++) {
-				vreg *arg = R(o->extra[i]);
-				if (arg) {
+				// Move arguments to X0-X7 in reverse order
+				for (int i = nargs - 1; i >= 0; i--) {
+					vreg *arg = R(o->extra[i]);
+					if (arg && i < 8) {
+						Arm64Reg target = (Arm64Reg)(X0 + i);
 					LOAD_VREG((Arm64Reg)(X0 + i), arg);
+					}
 				}
-			}
 
-			if (isNative) {
-				void *fptr = ctx->m->functions_ptrs[o->p2];
+				// Load function pointer into X9
 				arm_load_imm64(ctx, X9, (uint64_t)fptr);
-				arm_call_native(ctx, X9);  // Native method call with X29 fix
-				arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			} else {
-				// JIT function - EAGER JIT + direct BL
-				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					// CRITICAL: Save current function context before recursive JIT call
-					// Recursive calls modify ctx->f, ctx->currentPos, etc.
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
 
-					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					hl_jit_function(ctx, ctx->m, target_f);
+				// BLR X9
+				B32(0xd63f0120);
 
-					// Restore our function context after recursive compilation
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+				// Result in X0
+				if (dst) {
+			STORE_VREG(X0, dst);
 				}
-
-				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
-				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
-				int_val delta = target_offset - call_site_offset;
-
-				if (delta >= -134217728LL && delta < 134217728LL) {
-					int offset = (int)(delta / 4);
-					B32(0x94000000 | (offset & 0x03FFFFFF));
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
-				} else {
-					// Fall back to indirect call
-					void *target_addr = ctx->startBuf + target_offset;
-					arm_load_imm64(ctx, X9, (uint64_t)target_addr);
-					arm_blr(ctx, X9);
-					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-				}
-			}
-
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
 			}
 		}
 		break;
@@ -5389,162 +5004,97 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OCallMethod:
 		{
 			// Call method on object from first argument
-			// Use type->obj->proto to get function index, then resolve to function pointer
+			// object->type->proto[method_index](args...)
 			vreg *obj = R(o->extra[0]);
 
-			if (obj == NULL) {
-				printf("[OCallMethod] ERROR: obj vreg is NULL\n");
-				jit_error("OCallMethod: NULL object vreg");
-			}
-			if (obj->t == NULL) {
-				printf("[OCallMethod] ERROR: obj->t is NULL\n");
-				jit_error("OCallMethod: NULL type");
-			}
-
-			// printf("[OCallMethod] type=%d, method_index=%d, nargs=%d\n",
-			//        obj->t->kind, o->p2, o->p3);
-
-			// Get function index from proto array
-			int findex = -1;
-			void *method_ptr = NULL;
-
 			if (obj->t->kind == HOBJ || obj->t->kind == HSTRUCT) {
-				// Object types have proto array in type->obj
-				if (obj->t->obj == NULL || obj->t->obj->proto == NULL) {
-					jit_error("OCallMethod: no proto array for object type");
-				}
+				Arm64Reg r_obj = GET_REG(obj);
 
-				// Search proto array for matching pindex, including super classes
-				hl_type *search_type = obj->t;
-				while (search_type != NULL && findex == -1) {
-					if (search_type->kind == HOBJ || search_type->kind == HSTRUCT) {
-						for (int pi = 0; pi < search_type->obj->nproto; pi++) {
-							if (search_type->obj->proto[pi].pindex == o->p2) {
-								findex = search_type->obj->proto[pi].findex;
-								// printf("[OCallMethod] Found method %d in type proto[%d], findex=%d\n",
-								//        o->p2, pi, findex);
-								break;
-							}
-						}
-						// Move to parent class if not found
-						search_type = search_type->obj->super;
-					} else {
-						break;
+				// Read type from object (offset 0)
+				// LDR X9, [r_obj, #0]
+				arm_ldr_imm(ctx, X9, r_obj, 0, 3);
+
+				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
+				// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
+				arm_ldr_imm(ctx, X9, X9, 2, 3);
+
+				// Set up arguments from o->extra (object and additional args)
+				for (i = 0; i < o->p3 && i < 8; i++) {
+					vreg *arg = R(o->extra[i]);
+					Arm64Reg src = GET_REG(arg);
+					Arm64Reg dst_reg = X0 + i;
+
+					if (src != dst_reg) {
+						arm_mov_reg(ctx, dst_reg, src, true);
 					}
 				}
 
-				if (findex == -1) {
-					printf("[OCallMethod] ERROR: Method pindex %d not found (searched inheritance chain)\n",
-					       o->p2);
-					jit_error("OCallMethod: method pindex not found");
-				}
-				// printf("[OCallMethod] findex=%d\n", findex);
-
-				// Check if function is already JITed
-				if (m->functions_ptrs[findex] == NULL) {
-					// Eager JIT: compile the function now
-					// printf("[OCallMethod] Eagerly JITing function %d\n", findex);
-					hl_function *saved_f = ctx->f;
-					int saved_currentPos = ctx->currentPos;
-					hl_function *target_f = m->code->functions + m->functions_indexes[findex];
-					hl_jit_function(ctx, ctx->m, target_f);
-					ctx->f = saved_f;
-					ctx->currentPos = saved_currentPos;
+				if (o->p3 > 8) {
+					jit_error("OCallMethod with >8 args not yet implemented");
 				}
 
-				// Get function pointer from module
-				method_ptr = m->functions_ptrs[findex];
-				// printf("[OCallMethod] Resolved method_ptr=%p\n", method_ptr);
-			} else {
-				// Non-object types (primitives, nullable, etc) - use runtime dispatch
-				// Similar to OCallThis, read type from object at runtime and dispatch dynamically
-				// printf("[OCallMethod] Non-object type %d - using runtime dispatch\n", obj->t->kind);
-				findex = -2; // Special marker for runtime dispatch
-				method_ptr = NULL; // Will be loaded at runtime
-			}
-
-			// Set up arguments FIRST (before we clobber registers)
-			for (i = 0; i < o->p3 && i < 8; i++) {
-				vreg *arg = R(o->extra[i]);
-				Arm64Reg dst_reg = X0 + i;
-				LOAD_VREG(dst_reg, arg);
-			}
-
-			if (o->p3 > 8) {
-				jit_error("OCallMethod with >8 args not yet implemented");
-			}
-
-			// Load the method pointer
-			if (findex == -2) {
-				// Runtime dispatch: read type from object, then proto[method_index]
-				// obj is in X0 (first argument)
-				// printf("[OCallMethod] Runtime dispatch: method_index=%d\n", o->p2);
-				// Read type from object (offset 0)
-				arm_ldr_imm(ctx, X9, X0, 0, 3);  // X9 = obj->type
-				// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
-				arm_ldr_imm(ctx, X9, X9, 2, 3);  // X9 = type->vobj_proto
-				// Load method address from proto[method_index]
-				// NOTE: After m->functions_ptrs conversion, vobj_proto contains ABSOLUTE addresses!
+				// Load method pointer from proto[method_index]
+				// LDR X9, [X9, #(o->p2 * HL_WSIZE)]
 				if (o->p2 < 4096) {
-					arm_ldr_imm(ctx, X9, X9, o->p2, 3);  // X9 = proto[method_index] (absolute address)
+					arm_ldr_imm(ctx, X9, X9, o->p2, 3);
 				} else {
-					arm_load_imm64(ctx, X11, o->p2 * HL_WSIZE);
-					arm_ldr_reg(ctx, X9, X9, X11, 3);
+					Arm64Reg temp = X10;
+					arm_load_imm64(ctx, temp, o->p2 * HL_WSIZE);
+					arm_ldr_reg(ctx, X9, X9, temp, 3);
 				}
-				// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
-				// printf("[OCallMethod] Runtime dispatch generated (proto has absolute addresses)\n");
+
+				// Call the method
+				arm_blr(ctx, X9);
+
+				// Store result if needed
+				if (dst && dst->t->kind != HVOID) {
+					Arm64Reg rd = GET_REG(dst);
+					if (rd != X0) {
+						arm_mov_reg(ctx, rd, X0, true);
+					}
+				}
 			} else {
-				// Compile-time known method - load function pointer at RUNTIME
-				// NOTE: At JIT time, m->functions_ptrs contains OFFSETS, not absolute addresses!
-				// module.c converts them AFTER hl_jit_code returns, so we must load at runtime
-				// printf("[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[%d] at runtime\n", findex);
-				// X9 = load function pointer from m->functions_ptrs[findex] at RUNTIME
-				arm_load_imm64(ctx, X11, (uint64_t)&m->functions_ptrs[findex]);
-				arm_ldr_imm(ctx, X9, X11, 0, 3);  // X9 = *(&m->functions_ptrs[findex])
-			}
-
-			// Call the method
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-
-			// Store result if needed
-			if (dst && dst->t->kind != HVOID) {
-				STORE_VREG(X0, dst);
+				jit_error("OCallMethod: unsupported object type");
 			}
 		}
 		break;
 
 	case OCallThis:
 		{
-			// printf("[OCallThis] method_index=%d, nargs=%d\n", o->p2, o->p3);
 			// Call method on "this" object (register 0)
 			// this->type->proto[method_index](this, args...)
 			vreg *r = R(0);  // "this" is always register 0
-
-			// Load "this" directly into X0 (first argument)
-			LOAD_VREG(X0, r);
+			Arm64Reg r_this = GET_REG(r);
 
 			// Read type from this (offset 0)
-			// LDR X9, [X0, #0]
-			arm_ldr_imm(ctx, X9, X0, 0, 3);
+			// LDR X9, [r_this, #0]
+			arm_ldr_imm(ctx, X9, r_this, 0, 3);
 
 			// Read proto from type (offset HL_WSIZE*2 = 16 bytes)
 			// LDR X9, [X9, #2] (scaled offset: 16/8 = 2)
 			arm_ldr_imm(ctx, X9, X9, 2, 3);
 
+			// Set up arguments: X0 = this, X1-X7 = extra args
+			if (r_this != X0) {
+				arm_mov_reg(ctx, X0, r_this, true);
+			}
+
 			// Move additional arguments to X1-X7
 			for (i = 0; i < o->p3 && i < 7; i++) {
 				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
 				Arm64Reg dst_reg = X1 + i;
-				// Load directly into argument register
-				LOAD_VREG(dst_reg, arg);
+
+				if (src != dst_reg) {
+					arm_mov_reg(ctx, dst_reg, src, true);
+				}
 			}
 
 			if (o->p3 > 7) {
 				jit_error("OCallThis with >7 args not yet implemented");
 			}
 
-			// Load method address from proto[method_index]
-			// NOTE: After m->functions_ptrs conversion, vobj_proto contains ABSOLUTE addresses!
+			// Load method pointer from proto[method_index]
 			// LDR X9, [X9, #(o->p2 * HL_WSIZE)]
 			// Scaled offset: (o->p2 * 8) / 8 = o->p2
 			if (o->p2 < 4096) {
@@ -5554,11 +5104,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_ldr_reg(ctx, X9, X9, X11, 3);
 			}
 
-			// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
-
 			// Call the method
 			arm_blr(ctx, X9);
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
 
 			// Store result if needed
 			if (dst && dst->t->kind != HVOID) {
@@ -5568,7 +5115,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 
 	case OCallClosure:
-		// printf("[OCallClosure] closure_type=%d, nargs=%d\n", ra->t->kind, o->p3);
 		// Call through closure: closure->fun(value?, args...)
 		if (ra->t->kind == HDYN) {
 			// Dynamic closure - call hl_dyn_call(closure, args[], nargs)
@@ -5601,10 +5147,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			arm_movz(ctx, X2, o->p3, 0, true);
 
 			// Call hl_dyn_call
-			// printf("[OCallClosure] About to call hl_dyn_call at %p\n", (void*)hl_dyn_call);
 			arm_load_imm64(ctx, X9, (uint64_t)hl_dyn_call);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
+			arm_blr(ctx, X9);
 
 			// Restore stack
 			// ADD SP, SP, #args_size
@@ -5618,31 +5162,30 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Regular closure: struct { fun, value, hasValue }
 			// if (closure->hasValue) call fun(value, args...) else call fun(args...)
 
-			// Load closure into X11 (preserve across branches)
-			LOAD_VREG(X11, ra);
+			Arm64Reg r_closure = GET_REG(ra);
 
 			// Load hasValue flag from closure (offset = HL_WSIZE * 2 = 16 bytes)
-			// hasValue is int (32-bit), so use size=2 (32-bit load)
-			// For size=2 (32-bit), scaled offset = 16/4 = 4
-			arm_ldr_imm(ctx, X10, X11, 4, 2);
+			// For size=3 (64-bit), scaled offset = 16/8 = 2
+			arm_ldr_imm(ctx, X10, r_closure, 2, 3);
 
 			// Test if hasValue is non-zero
 			// CBZ X10, no_value_case
 			int no_value_jump = arm_do_cbz(ctx, X10, true);
 
 			// HAS VALUE CASE: Load value and pass as first argument
-			// Load closure->value
-			// vclosure: { t(8), fun(8), hasValue(4), stackCount(4), value(8) }
-			// value is at offset 24 bytes = scaled offset 3
-			arm_ldr_imm(ctx, X0, X11, 3, 3);
+			// Load closure->value (offset = HL_WSIZE = 8 bytes, scaled = 1)
+			arm_ldr_imm(ctx, X0, r_closure, 1, 3);
 
 			// Set up remaining arguments (shift by 1)
 			for (i = 0; i < o->p3; i++) {
 				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
 				Arm64Reg dst_reg = (i < 7) ? (X1 + i) : X9;  // X1-X7 for args 1-7
 
 				if (i < 7) {
-					LOAD_VREG(dst_reg, arg);
+					if (src != dst_reg) {
+						arm_mov_reg(ctx, dst_reg, src, true);
+					}
 				} else {
 					// Stack args not yet implemented
 					jit_error("Closures with >7 args not yet implemented");
@@ -5650,42 +5193,9 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			}
 
 			// Load function pointer and call
-			// CRITICAL FIX: closure->fun is at offset HL_WSIZE (8 bytes), not 0!
-			// vclosure struct: { t, fun, hasValue, value }
-			// Offset 0 = t, Offset 8 = fun
-			// For scaled offset with size=3 (64-bit): offset_bytes / 8 = 8 / 8 = 1
-			// NOTE: After JIT, closure->fun contains an ABSOLUTE ADDRESS (from hl_alloc_closure_ptr)!
-			arm_ldr_imm(ctx, X9, X11, 1, 3);
-
-			// DEBUG: Check if function pointer is NULL
-			// CBZ X9, error_label
-			int null_check_jump = arm_do_cbz(ctx, X9, true);
-
-			// NO CONVERSION NEEDED - closure->fun already contains absolute address!
-
-			// Normal case: call the function
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-
-			// Jump over error handler
-			int after_error_jump = arm_do_jump(ctx);
-
-			// Error handler: function pointer was NULL
-			arm_patch_cbz(ctx, null_check_jump, ARM_BUF_POS());
-			// Load error message and call printf
-			static char null_fn_msg[] = "ERROR: OCallClosure hasValue path - closure->fun is NULL!\n";
-			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg);
-			arm_load_imm64(ctx, X9, (uint64_t)&printf);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			// Exit
-			arm_movz(ctx, X0, 1, 0, true);  // exit code 1
-			arm_load_imm64(ctx, X9, (uint64_t)&exit);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-
-			// Patch the after-error jump to skip error handler
-			arm_patch_jump(ctx, after_error_jump);
+			// closure->fun is at offset 0
+			arm_ldr_imm(ctx, X9, r_closure, 0, 3);
+			arm_blr(ctx, X9);
 
 			// Jump over no-value case
 			int end_jump = arm_do_jump(ctx);
@@ -5696,47 +5206,21 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Set up arguments
 			for (i = 0; i < o->p3; i++) {
 				vreg *arg = R(o->extra[i]);
+				Arm64Reg src = GET_REG(arg);
 				Arm64Reg dst_reg = (i < 8) ? (X0 + i) : X9;
 
 				if (i < 8) {
-					LOAD_VREG(dst_reg, arg);
+					if (src != dst_reg) {
+						arm_mov_reg(ctx, dst_reg, src, true);
+					}
 				} else {
 					jit_error("Closures with >8 args not yet implemented");
 				}
 			}
 
 			// Load function pointer and call
-			// closure->fun is at offset HL_WSIZE (scaled offset = 1)
-			// NOTE: After JIT, closure->fun contains an ABSOLUTE ADDRESS (from hl_alloc_closure_ptr)!
-			arm_ldr_imm(ctx, X9, X11, 1, 3);
-
-			// DEBUG: Check if function pointer is NULL
-			int null_check_jump2 = arm_do_cbz(ctx, X9, true);
-
-			// NO CONVERSION NEEDED - closure->fun already contains absolute address!
-
-			// Normal case: call the function
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-
-			// Jump over error handler
-			int after_error_jump2 = arm_do_jump(ctx);
-
-			// Error handler: function pointer was NULL
-			arm_patch_cbz(ctx, null_check_jump2, ARM_BUF_POS());
-			static char null_fn_msg2[] = "ERROR: OCallClosure no-value path - closure->fun is NULL!\n";
-			arm_load_imm64(ctx, X0, (uint64_t)null_fn_msg2);
-			arm_load_imm64(ctx, X9, (uint64_t)&printf);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-			// Exit
-			arm_movz(ctx, X0, 1, 0, true);
-			arm_load_imm64(ctx, X9, (uint64_t)&exit);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
-			arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29
-
-			// Patch the after-error jump
-			arm_patch_jump(ctx, after_error_jump2);
+			arm_ldr_imm(ctx, X9, r_closure, 0, 3);
+			arm_blr(ctx, X9);
 
 			// Patch end jump
 			arm_patch_jump(ctx, end_jump);
@@ -5781,7 +5265,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				B32(0xd63f0120);
 
 				// Result in X0
-				STORE_VREG(X0, dst);
+				Arm64Reg rd = GET_REG(dst);
+				if (rd != X0) {
+					arm_mov_reg(ctx, rd, X0, true);
+				}
 			}
 		}
 		break;
@@ -5790,10 +5277,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		{
 			// Check if value is null, throw exception if so
 			if (dst) {
-				LOAD_VREG(X10, dst);
+				Arm64Reg rd = GET_REG(dst);
 
-				// CBNZ X10, not_null
-				int not_null = arm_do_cbnz(ctx, X10, true);
+				// CBNZ rd, not_null
+				int not_null = arm_do_cbnz(ctx, rd, true);
 
 				// Null case: call hl_null_access() or similar
 				// For now, just trigger error
@@ -5818,10 +5305,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// extra = array of (value, jump_offset) pairs
 
 			if (ra) {
-				LOAD_VREG(X10, ra);
-				// CRITICAL FIX: p2 contains the TOTAL number of ints in the extra array
-				// Each case is a (value, offset) pair, so ncases = p2 / 2
-				int ncases = o->p2 / 2;
+				Arm64Reg rn = GET_REG(ra);
+				int ncases = o->p2;
 				int default_offset = o->p3;
 				int *cases = (int*)o->extra;
 
@@ -5830,12 +5315,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					int case_value = cases[i * 2];
 					int case_offset = cases[i * 2 + 1];
 
-					// CMP X10, #case_value
+					// CMP rn, #case_value
 					if (case_value < 4096) {
-						arm_cmp_imm(ctx, X10, case_value, true);
+						arm_cmp_imm(ctx, rn, case_value, true);
 					} else {
 						arm_load_imm64(ctx, X9, case_value);
-						arm_subs_reg(ctx, (Arm64Reg)31, X10, X9, true);
+						arm_subs_reg(ctx, (Arm64Reg)31, rn, X9, true);
 					}
 
 					// B.EQ to case
@@ -5870,42 +5355,42 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				int offset = c->offsets[o->p2];
 				int size = hl_type_size(c->params[o->p2]);
 
-				LOAD_VREG(X10, dst);   // enum pointer
-				LOAD_VREG(X11, rb);    // value to store
+				Arm64Reg r_enum = GET_REG(dst);
+				Arm64Reg r_value = GET_REG(rb);
 
 				// Store value at offset in enum
 				// STR/STRB/STRH depending on size
 				if (size == 8) {
 					// 64-bit store
 					if (offset >= 0 && offset < 4096 * 8) {
-						arm_str_imm(ctx, X11, X10, offset / 8, 3);
+						arm_str_imm(ctx, r_value, r_enum, offset / 8, 3);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, X11, X10, X9, 3);
+						arm_str_reg(ctx, r_value, r_enum, X9, 3);
 					}
 				} else if (size == 4) {
 					// 32-bit store
 					if (offset >= 0 && offset < 4096 * 4) {
-						arm_str_imm(ctx, X11, X10, offset / 4, 2);
+						arm_str_imm(ctx, r_value, r_enum, offset / 4, 2);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, X11, X10, X9, 2);
+						arm_str_reg(ctx, r_value, r_enum, X9, 2);
 					}
 				} else if (size == 2) {
 					// 16-bit store
 					if (offset >= 0 && offset < 4096 * 2) {
-						arm_str_imm(ctx, X11, X10, offset / 2, 1);
+						arm_str_imm(ctx, r_value, r_enum, offset / 2, 1);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, X11, X10, X9, 1);
+						arm_str_reg(ctx, r_value, r_enum, X9, 1);
 					}
 				} else {
 					// 8-bit store
 					if (offset >= 0 && offset < 4096) {
-						arm_str_imm(ctx, X11, X10, offset, 0);
+						arm_str_imm(ctx, r_value, r_enum, offset, 0);
 					} else {
 						arm_load_imm64(ctx, X9, offset);
-						arm_str_reg(ctx, X11, X10, X9, 0);
+						arm_str_reg(ctx, r_value, r_enum, X9, 0);
 					}
 				}
 			}
@@ -5923,10 +5408,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			bool float64 = (dst->t->kind == HF64);
 
 			if (float_val == 0.0) {
-				// Zero out register
-				arm_movz(ctx, X10, 0, 0, true);
+				// Zero out FPU register using XOR equivalent
+				// For simplicity, just load zero bits
+				Arm64Reg rd = GET_REG(dst);
+				arm_movz(ctx, rd, 0, 0, true);
 			} else {
-				// Load float bits as integer
+				// Load float bits as integer, then move to FPU
 				uint64_t bits;
 				if (float64) {
 					bits = *(uint64_t*)&float_val;
@@ -5935,61 +5422,54 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					bits = *(uint32_t*)&f32;
 				}
 
-				// Load bits into X10
-				arm_load_imm64(ctx, X10, bits);
+				// Load bits into general register
+				Arm64Reg rd = GET_REG(dst);
+				arm_load_imm64(ctx, rd, bits);
 			}
-			// Store to destination
-			STORE_VREG(X10, dst);
 		}
 		break;
 
 	case OToSFloat:
 		// Convert signed integer to float
 		if (dst && ra) {
+			Arm64Reg rn = GET_REG(ra);
 			bool int64 = (ra->t->kind == HI64);
 			bool float64 = (dst->t->kind == HF64);
 
-			// Load input integer
-			LOAD_VREG(X10, ra);
-
 			// Convert using SCVTF: integer register -> FPU register
-			arm_scvtf(ctx, V0, X10, int64, float64);
+			arm_scvtf(ctx, V0, rn, int64, float64);
 
 			// Move FPU result back to general register for storage
+			// (Since we don't have proper FPU register allocation yet)
+			Arm64Reg rd = GET_REG(dst);
 			// FMOV Xd, Dn  (move FPU to general register)
+			// Format: sf 0 011110 ftype 1 00 110 000000 Rn Rd
 			unsigned int sf = float64 ? 1 : 0;
 			unsigned int ftype = float64 ? 0x01 : 0x00;
 			unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
-			                    (0x06 << 16) | arm_reg(X10);
+			                    (0x06 << 16) | arm_reg(rd);
 			B32(inst);
-
-			// Store result
-			STORE_VREG(X10, dst);
 		}
 		break;
 
 	case OToUFloat:
 		// Convert unsigned integer to float
 		if (dst && ra) {
+			Arm64Reg rn = GET_REG(ra);
 			bool int64 = (ra->t->kind == HI64);
 			bool float64 = (dst->t->kind == HF64);
 
-			// Load input integer
-			LOAD_VREG(X10, ra);
-
 			// Convert using UCVTF: integer register -> FPU register
-			arm_ucvtf(ctx, V0, X10, int64, float64);
+			arm_ucvtf(ctx, V0, rn, int64, float64);
 
 			// Move FPU result back to general register for storage
+			Arm64Reg rd = GET_REG(dst);
 			// FMOV Xd, Vn
 			unsigned int sf = float64 ? 1 : 0;
 			unsigned int ftype = float64 ? 0x01 : 0x00;
 			unsigned int inst = (sf << 31) | (0x1E << 24) | (ftype << 22) | (1 << 21) |
-			                    (0x06 << 16) | arm_reg(X10);
+			                    (0x06 << 16) | arm_reg(rd);
 			B32(inst);
-
-			// Store result
-			STORE_VREG(X10, dst);
 		}
 		break;
 
@@ -6033,44 +5513,57 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					break;
 				}
 
-			if (get_func) {
-				if (needs_type_arg) {
-					// Arguments: object (X0), hash (X1), type (X2)
-					LOAD_VREG(X0, ra);
+				if (get_func) {
+					Arm64Reg rd = GET_REG(dst);
+					Arm64Reg r_obj = GET_REG(ra);
 
-					// Load hash into X1
-					arm_load_imm64(ctx, X1, hash);
+					if (needs_type_arg) {
+						// Arguments: object (X0), hash (X1), type (X2)
+						// Move object to X0
+						if (r_obj != X0) {
+							arm_mov_reg(ctx, X0, r_obj, true);
+						}
 
-					// Load type pointer into X2
-					arm_load_imm64(ctx, X2, (uint64_t)dst->t);
+						// Load hash into X1
+						arm_load_imm64(ctx, X1, hash);
 
-					// Load function pointer into X9
-					arm_load_imm64(ctx, X9, (uint64_t)get_func);
+						// Load type pointer into X2
+						arm_load_imm64(ctx, X2, (uint64_t)dst->t);
 
-					// BLR X9
-					B32(0xd63f0120);
+						// Load function pointer into X9
+						arm_load_imm64(ctx, X9, (uint64_t)get_func);
 
-					// Store result
-					STORE_VREG(X0, dst);
-				} else {
-					// Arguments: object (X0), hash (X1)
-					LOAD_VREG(X0, ra);
+						// BLR X9
+						B32(0xd63f0120);
 
-					// Load hash into X1
-					arm_load_imm64(ctx, X1, hash);
+						// Result in X0, move to destination if needed
+						if (rd != X0) {
+							arm_mov_reg(ctx, rd, X0, true);
+						}
+					} else {
+						// Arguments: object (X0), hash (X1)
+						// Move object to X0
+						if (r_obj != X0) {
+							arm_mov_reg(ctx, X0, r_obj, true);
+						}
 
-					// Load function pointer into X9
-					arm_load_imm64(ctx, X9, (uint64_t)get_func);
+						// Load hash into X1
+						arm_load_imm64(ctx, X1, hash);
 
-					// BLR X9
-					B32(0xd63f0120);
+						// Load function pointer into X9
+						arm_load_imm64(ctx, X9, (uint64_t)get_func);
 
-					// Store result
-					STORE_VREG(X0, dst);
+						// BLR X9
+						B32(0xd63f0120);
+
+						// Result in X0, move to destination if needed
+						if (rd != X0) {
+							arm_mov_reg(ctx, rd, X0, true);
+						}
+					}
 				}
 			}
 		}
-			}
 		break;
 
 	case ODynSet:
@@ -6159,7 +5652,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			if (ra) {
 				vreg *arg = R(o->p1);
 				if (arg) {
-				LOAD_VREG(X0, arg);
+					Arm64Reg r0 = GET_REG(arg);
+					if (r0 != X0) {
+						arm_mov_reg(ctx, X0, r0, true);
+					}
 				}
 				// Load hl_throw address
 				arm_load_imm64(ctx, X9, (uint64_t)hl_throw);
@@ -6174,7 +5670,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// Rethrow exception - call hl_rethrow(value)
 			vreg *arg = R(o->p1);
 			if (arg) {
-			LOAD_VREG(X0, arg);
+				Arm64Reg r0 = GET_REG(arg);
+				if (r0 != X0) {
+					arm_mov_reg(ctx, X0, r0, true);
+				}
 			}
 			// Load hl_rethrow address
 			arm_load_imm64(ctx, X9, (uint64_t)hl_rethrow);
@@ -6190,9 +5689,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OStaticClosure:
 		// Allocate static closure and store pointer
 		if (dst) {
-			printf("[OStaticClosure] fid=%d\n", o->p2);
 			vclosure *c = alloc_static_closure(ctx, o->p2);
-			printf("[OStaticClosure] Allocated closure at %p, fun=%p\n", (void*)c, c->fun);
 			arm_load_imm64(ctx, X10, (uint64_t)c);
 			STORE_VREG(X10, dst);
 		}
@@ -6205,32 +5702,25 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// X0 = object
 			LOAD_VREG(X0, rb);
 
-			// X1 = function pointer - get offset and convert to absolute address
-			// On ARM64, functions_ptrs contains offsets, not addresses
-			hl_module *m = ctx->m;
+			// X1 = function pointer (needs to be patched when JIT address is known)
+			// For now, mark it as needing patching via ctx->calls
+			jlist *j = (jlist*)hl_malloc(&ctx->galloc, sizeof(jlist));
+			j->pos = ARM_BUF_POS();
+			j->target = o->p2;
+			j->next = ctx->calls;
+			ctx->calls = j;
 
-			// Ensure target function is JITed
-			if (m->functions_ptrs[o->p2] == NULL) {
-				hl_function *saved_f = ctx->f;
-				int saved_currentPos = ctx->currentPos;
-				hl_function *target_f = m->code->functions + m->functions_indexes[o->p2];
-				hl_jit_function(ctx, m, target_f);
-				ctx->f = saved_f;
-				ctx->currentPos = saved_currentPos;
-			}
-
-			// X1 = load function pointer from m->functions_ptrs[o->p2] at RUNTIME
-			// (module.c will have converted it to absolute address by the time this executes)
-			arm_load_imm64(ctx, X11, (uint64_t)&m->functions_ptrs[o->p2]);
-			arm_ldr_imm(ctx, X1, X11, 0, 3);  // X1 = *(&m->functions_ptrs[o->p2])
+			// Placeholder - will be patched with actual JIT function address
+			arm_load_imm64(ctx, X1, 0xDEADBEEF);
 
 			// X2 = function type
+			hl_module *m = ctx->m;
 			hl_type *ftype = m->code->functions[m->functions_indexes[o->p2]].type;
 			arm_load_imm64(ctx, X2, (uint64_t)ftype);
 
 			// Call hl_alloc_closure_ptr
 			arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_closure_ptr);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
+			arm_blr(ctx, X9);
 
 			// Store result (already in X0)
 			STORE_VREG(X0, dst);
@@ -6261,13 +5751,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			// X0 = object (load from stack)
 			LOAD_VREG(X0, ra);
 
-			// X1 = read function address from obj->type->vobj_proto[o->p3]
-			// NOTE: After m->functions_ptrs conversion, vobj_proto contains ABSOLUTE addresses!
+			// X1 = read function pointer from obj->type->vobj_proto[o->p3]
 			// LDR X1, [X0, #0]  - load type
 			arm_ldr_imm(ctx, X1, X0, 0, 3);
 			// LDR X1, [X1, #(HL_WSIZE*2)]  - load vobj_proto
 			arm_ldr_imm(ctx, X1, X1, 2, 3);
-			// LDR X1, [X1, #(HL_WSIZE*o->p3)]  - load function address
+			// LDR X1, [X1, #(HL_WSIZE*o->p3)]  - load function pointer
 			if (o->p3 < 4096) {
 				arm_ldr_imm(ctx, X1, X1, o->p3, 3);
 			} else {
@@ -6275,14 +5764,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				arm_ldr_reg(ctx, X1, X1, X9, 3);
 			}
 
-			// NO CONVERSION NEEDED - vobj_proto already contains absolute addresses!
-
 			// X2 = function type
 			arm_load_imm64(ctx, X2, (uint64_t)t);
 
 			// Call hl_alloc_closure_ptr
 			arm_load_imm64(ctx, X9, (uint64_t)hl_alloc_closure_ptr);
-			arm_call_native(ctx, X9);  // Native method call with X29 fix
+			arm_blr(ctx, X9);
 
 			// Store result (already in X0)
 			STORE_VREG(X0, dst);
@@ -6300,8 +5787,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OToVirtual:
 		// Convert to virtual - usually just a pointer copy
 		if (dst && ra) {
-			LOAD_VREG(X10, ra);
-			STORE_VREG(X10, dst);
+			Arm64Reg rd = GET_REG(dst);
+			Arm64Reg rn = GET_REG(ra);
+			if (rd != rn) {
+				arm_mov_reg(ctx, rd, rn, true);
+			}
 		}
 		break;
 
@@ -6318,25 +5808,6 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	}
 
 	#undef GET_REG
-
-#ifdef HL_JIT_ARM64
-	// Patch jumps (conditional branches, etc.) - must be done per-function before ctx->jumps is cleared
-	jlist *j = ctx->jumps;
-	while( j ) {
-		int target_pos = ctx->opsPos[j->target];
-		if( target_pos <= 0 && j->target != 0 ) {
-			printf("ERROR: Invalid jump - pos=0x%x, target=%d, target_pos=%d, nops=%d\n",
-			       j->pos, j->target, target_pos, f->nops);
-			jit_error("Invalid jump target");
-			return -1;
-		}
-		// Patch to the actual target position
-		arm_patch_jump_to(ctx, j->pos, target_pos);
-		j = j->next;
-	}
-	// Clear the jump list after patching (prevents stale jumps in next function)
-	ctx->jumps = NULL;
-#endif
 
 	return codePos;
 #endif // HL_JIT_ARM64
@@ -6547,31 +6018,25 @@ static void arm_mov_reg(jit_ctx *ctx, Arm64Reg rd, Arm64Reg rm, bool is64) {
 
 // MOVZ (move wide with zero): mov rd, #imm16 << (shift * 16)
 // Format: sf 10 100101 hw(2) imm16(16) Rd(5)
-// Bits 30-29 = 10 (opc for MOVZ), bits 28-23 = 100101
 static void arm_movz(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64) {
 	if (!arm_fits_unsigned(imm16, 16) || shift > 3) {
 		ASSERT(2);
 		return;
 	}
 	unsigned int sf = is64 ? 1 : 0;
-	// CRITICAL FIX: Must use 0xA5 (bits 30-23 = 10100101), not 0x52 (01010010)!
-	// 0x52 gives opc=01, but MOVZ requires opc=10
-	unsigned int inst = (sf << 31) | (0xA5 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
+	unsigned int inst = (sf << 31) | (0x52 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
 	B32(inst);
 }
 
 // MOVK (move wide with keep): movk rd, #imm16 << (shift * 16)
 // Format: sf 11 100101 hw(2) imm16(16) Rd(5)
-// Bits 30-29 = 11 (opc for MOVK), bits 28-23 = 100101
 static void arm_movk(jit_ctx *ctx, Arm64Reg rd, unsigned int imm16, unsigned int shift, bool is64) {
 	if (!arm_fits_unsigned(imm16, 16) || shift > 3) {
 		ASSERT(3);
 		return;
 	}
 	unsigned int sf = is64 ? 1 : 0;
-	// CRITICAL FIX: Must use 0xE5 (bits 30-23 = 11100101), not 0x72 (01110010)!
-	// 0x72 gives opc=01, but MOVK requires opc=11
-	unsigned int inst = (sf << 31) | (0xE5 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
+	unsigned int inst = (sf << 31) | (0x72 << 23) | (shift << 21) | (imm16 << 5) | arm_reg(rd);
 	B32(inst);
 }
 
@@ -6631,33 +6096,27 @@ static void arm_ldr_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm
 		ASSERT(5);
 		return;
 	}
-	// LDR (unsigned offset): size(2) 111001 01 imm12(12) Rn(5) Rt(5)
-	// Bit 22 must be set to 1 for LDR unsigned offset mode
-	unsigned int inst = (size << 30) | (0x39 << 24) | (1 << 22) | (imm12 << 10) |
+	unsigned int inst = (size << 30) | (0x39 << 24) | (imm12 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
-
 	B32(inst);
 }
 
 // STR (unsigned offset): Store register to [rn + (imm12 << size)]
 // Format: size(2) 111 0 00 imm12(12) Rn(5) Rt(5)
 // NOTE: imm12 is already scaled (offset in units of access size)
-// CRITICAL: Bit 24 must be 0 for STR (store), 1 for LDR (load)
 static void arm_str_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, unsigned int imm12, int size) {
 	if (!arm_fits_unsigned(imm12, 12)) {
 		ASSERT(6);
 		return;
 	}
-	// Use 0x38 for STR (bit 24 = 0 for store), not 0x39 which is LDR (load)!
-	unsigned int inst = (size << 30) | (0x38 << 24) | (imm12 << 10) |
+	unsigned int inst = (size << 30) | (0x39 << 24) | (0 << 22) | (imm12 << 10) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
 
 // LDUR (unscaled offset): Load register from [rn + imm9]
-// Format: size(2) 111 0 00 0 1 imm9(9) 00 Rn(5) Rt(5)
+// Format: size(2) 111 0 00 imm9(9) 00 Rn(5) Rt(5)
 // NOTE: imm9 is a SIGNED 9-bit byte offset (NOT scaled), range -256 to +255
-// CRITICAL: Bit 22 must be 1 for LDUR (load), 0 for STUR (store)
 static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int size) {
 	// Check if offset fits in signed 9 bits
 	if (imm9 < -256 || imm9 > 255) {
@@ -6666,8 +6125,7 @@ static void arm_ldur_imm(jit_ctx *ctx, Arm64Reg rt, Arm64Reg rn, int imm9, int s
 	}
 	// Encode as unsigned 9-bit value (two's complement)
 	unsigned int imm9_encoded = imm9 & 0x1FF;
-	// Use 0x39 for LDUR (bit 22 = 1 for load), not 0x38 which is STUR (store)!
-	unsigned int inst = (size << 30) | (0x39 << 24) | (imm9_encoded << 12) |
+	unsigned int inst = (size << 30) | (0x38 << 24) | (imm9_encoded << 12) |
 	                    (arm_reg(rn) << 5) | arm_reg(rt);
 	B32(inst);
 }
@@ -7174,26 +6632,19 @@ static int arm_b(jit_ctx *ctx, int offset) {
 
 // BL (branch with link): Call function at PC + (offset << 2)
 // Format: 1 00101 imm26(26)
-// CRITICAL: Also restores X29 after BL to fix corruption from called JIT functions
 static int arm_bl(jit_ctx *ctx, int offset) {
 	int pos = ARM_BUF_POS();
 	if (offset == 0) {
 		B32(0x94000000);  // BL with 0 offset
-		// X29 restore added below
-	} else {
-		if (!arm_fits_signed(offset >> 2, 26)) {
-			ASSERT(10);
-			return pos;
-		}
-		unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
-		unsigned int inst = (0x25 << 26) | imm26;
-		B32(inst);
+		return pos;
 	}
-
-	// NUCLEAR FIX: Restore X29 after BL to fix corruption from called functions
-	// Called JIT functions might have X29 corrupted by their native calls
-	// Even though epilogue should restore it, defensive restore here ensures correctness
-	arm_add_imm(ctx, X29, XZR, 0, true);  // ADD X29, SP, #0
+	if (!arm_fits_signed(offset >> 2, 26)) {
+		ASSERT(10);
+		return pos;
+	}
+	unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
+	unsigned int inst = (0x25 << 26) | imm26;
+	B32(inst);
 	return pos;
 }
 
@@ -7206,39 +6657,9 @@ static void arm_br(jit_ctx *ctx, Arm64Reg rn) {
 
 // BLR (branch with link to register): Call function at address in register
 // Format: 1101011 0001 11111 000000 Rn(5) 00000
-// CRITICAL: Automatically restores X29 after BLR to fix native function corruption
 static void arm_blr(jit_ctx *ctx, Arm64Reg rn) {
-	int pos_before = ARM_BUF_POS();
 	unsigned int inst = (0xD63F << 16) | (arm_reg(rn) << 5);
 	B32(inst);
-	int pos_after_blr = ARM_BUF_POS();
-
-	// NUCLEAR FIX: Always restore X29 after ANY BLR
-	// Some native C functions corrupt X29 (frame pointer) despite ARM64 AAPCS
-	// requiring it to be callee-saved. In our JIT ABI, X29 always equals SP,
-	// so we can safely restore it after every call.
-	// This adds 4 bytes per BLR but guarantees correctness.
-	// Generates: ADD X29, SP, #0  (opcode 0x910003FD)
-	arm_add_imm(ctx, X29, XZR, 0, true);
-}
-
-// arm_call_native: Defensive wrapper for calling native C functions
-// Calls via BLR then immediately restores X29 (frame pointer) from SP
-// This fixes corruption when native functions violate ARM64 AAPCS
-static void arm_call_native(jit_ctx *ctx, Arm64Reg rn) {
-	int pos_before_blr = ARM_BUF_POS();
-	arm_blr(ctx, rn);
-	int pos_after_blr = ARM_BUF_POS();
-
-	// CRITICAL FIX: Restore frame pointer after native call
-	// Some native functions corrupt X29 despite it being callee-saved
-	// In our JIT ABI, X29 always equals SP, so we can safely restore it
-	// Generates: ADD X29, SP, #0  (opcode 0x910003FD)
-	arm_add_imm(ctx, X29, XZR, 0, true);
-	int pos_after_restore = ARM_BUF_POS();
-
-	printf("[arm_call_native] BLR at offset %d (4 bytes), X29 restore at offset %d (4 bytes)\n",
-	       pos_before_blr, pos_after_blr);
 }
 
 // RET (return): Return to address in X30 (LR) or specified register
@@ -7315,7 +6736,6 @@ static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 	unsigned int *instr = (unsigned int*)(ctx->startBuf + jump_pos);
 	int offset = target_pos - jump_pos;
 
-
 	unsigned int opcode = (*instr >> 24) & 0xFF;
 
 	// Check instruction type and patch accordingly
@@ -7335,8 +6755,8 @@ static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 		}
 		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
 		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
-	} else if ((opcode & 0x7E) == 0x34) {
-		// CBZ/CBNZ (19-bit offset) - mask sf bit to handle both 32-bit (0x34/0x35) and 64-bit (0xB4/0xB5)
+	} else if ((opcode & 0xFE) == 0x34) {
+		// CBZ/CBNZ (19-bit offset)
 		if (!arm_fits_signed(offset >> 2, 19)) {
 			ASSERT(16);
 			return;
@@ -7421,11 +6841,11 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 		// Frame too large for single STP, need to adjust SP first
 		// sub sp, sp, #framesize
 		if (framesize <= 4095) {
-			arm_sub_imm(ctx, SP, SP, framesize, true);
+			arm_sub_imm(ctx, XZR, XZR, framesize, true);  // XZR acts as SP in this context
 		} else {
 			// Large frame: use temporary register
 			arm_load_imm64(ctx, X9, framesize);
-			arm_sub_reg(ctx, SP, SP, X9, true);
+			arm_sub_reg(ctx, XZR, XZR, X9, true);
 		}
 		// stp x29, x30, [sp] - offset mode (no writeback)
 		// For offset mode, we'll manually encode since our function only does writeback modes
@@ -7434,27 +6854,15 @@ static void arm_prologue(jit_ctx *ctx, int framesize) {
 		                    (0 << 15) | (30 << 10) | (31 << 5) | 29;
 		B32(inst);
 	} else {
-		// STP with pre-index
-		// Format: 10 1 01001 1 imm7(7) Rt2(5) Rn(5) Rt(5)
-		unsigned int inst = (2 << 30) |           // bits [31:30] = 10 (64-bit)
-		                    (1 << 29) |           // bit 29 = 1
-		                    (0b01001 << 24) |     // bits [28:24] = 01001
-		                    (1 << 23) |           // bit 23 = 1 (pre-index)
-		                    ((imm7 & 0x7F) << 15) | // imm7
-		                    (30 << 10) |          // Rt2 = X30 (LR)
-		                    (31 << 5) |           // Rn = 31 (SP)
-		                    29;                   // Rt = X29 (FP)
+		// STP with pre-index (encoded differently than post-index)
+		unsigned int inst = (2 << 30) | (0x29 << 25) | (3 << 23) |  // pre-index mode
+		                    ((imm7 & 0x7F) << 15) | (30 << 10) |      // X30 (LR)
+		                    (31 << 5) | 29;                            // SP, X29 (FP)
 		B32(inst);
 	}
 
 	// mov x29, sp (set frame pointer)
-	// CRITICAL: Must use ADD, not ORR-based mov_reg!
-	// In ADD, reg 31 = SP; in ORR, reg 31 = XZR (zero)
-	// int pos_before = ARM_BUF_POS();
-	arm_add_imm(ctx, X29, XZR, 0, true);  // ADD X29, SP, #0
-	// int pos_after = ARM_BUF_POS();
-	// unsigned int *instr_ptr = (unsigned int*)(ctx->startBuf + pos_before);
-	// printf("[PROLOGUE] MOV X29, SP instruction at offset %d: 0x%08x\n", pos_before, *instr_ptr);
+	arm_mov_reg(ctx, X29, XZR, true);  // XZR represents SP in move context
 }
 
 // Generate function epilogue:
@@ -7481,23 +6889,16 @@ static void arm_epilogue(jit_ctx *ctx, int framesize) {
 		B32(inst);
 		// add sp, sp, #framesize
 		if (framesize <= 4095) {
-			arm_add_imm(ctx, SP, SP, framesize, true);
+			arm_add_imm(ctx, XZR, XZR, framesize, true);
 		} else {
 			arm_load_imm64(ctx, X9, framesize);
-			arm_add_reg(ctx, SP, SP, X9, true);
+			arm_add_reg(ctx, XZR, XZR, X9, true);
 		}
 	} else {
 		// LDP with post-index
-		// Format: 10 1 01000 1 imm7(7) Rt2(5) Rn(5) Rt(5)
-		unsigned int inst = (2 << 30) |           // bits [31:30] = 10 (64-bit)
-		                    (1 << 29) |           // bit 29 = 1
-		                    (0b01000 << 24) |     // bits [28:24] = 01000
-		                    (1 << 23) |           // bit 23 = 1 (post-index)
-		                    (1 << 22) |           // bit 22 = 1 (L=1 for LDP, not STP!)
-		                    ((imm7 & 0x7F) << 15) | // imm7
-		                    (30 << 10) |          // Rt2 = X30 (LR)
-		                    (31 << 5) |           // Rn = 31 (SP)
-		                    29;                   // Rt = X29 (FP)
+		unsigned int inst = (2 << 30) | (0x28 << 25) | (1 << 23) |  // post-index mode
+		                    ((imm7 & 0x7F) << 15) | (30 << 10) |      // X30 (LR)
+		                    (31 << 5) | 29;                            // SP, X29 (FP)
 		B32(inst);
 	}
 

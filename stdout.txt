@@ -1,0 +1,1220 @@
+[PROLOGUE] MOV X29, SP instruction at offset 12: 0x910003fd
+[PROLOGUE] MOV X29, SP instruction at offset 56: 0x910003fd
+[PROLOGUE] MOV X29, SP instruction at offset 92: 0x910003fd
+[JIT] Function 24 assigned address at offset 0x7c
+[PROLOGUE] MOV X29, SP instruction at offset 128: 0x910003fd
+[JIT] Function 25 assigned address at offset 0x1b0
+[PROLOGUE] MOV X29, SP instruction at offset 436: 0x910003fd
+[JIT] Function 26 assigned address at offset 0x27c
+[PROLOGUE] MOV X29, SP instruction at offset 640: 0x910003fd
+[JIT] Function 27 assigned address at offset 0x2e4
+[PROLOGUE] MOV X29, SP instruction at offset 744: 0x910003fd
+[OGetGlobal] global 6 → type.kind=11
+[OGetGlobal] global 7 → type.kind=11
+[OGetGlobal] global 8 → type.kind=11
+[OGetGlobal] global 9 → type.kind=11
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 221 assigned address at offset 0x4d0
+[PROLOGUE] MOV X29, SP instruction at offset 1236: 0x910003fd
+[JIT] Function 223 assigned address at offset 0x554
+[PROLOGUE] MOV X29, SP instruction at offset 1368: 0x910003fd
+[JIT] Function 20 assigned address at offset 0x640
+[PROLOGUE] MOV X29, SP instruction at offset 1604: 0x910003fd
+[OGetGlobal] global 15 → type.kind=11
+[OGetGlobal] global 15 → type.kind=11
+[OGetGlobal] global 10 → type.kind=11
+[OGetGlobal] global 11 → type.kind=11
+[OGetGlobal] global 12 → type.kind=11
+[OGetGlobal] global 11 → type.kind=11
+[OGetGlobal] global 13 → type.kind=11
+[JIT] Function 15 assigned address at offset 0xe04
+[PROLOGUE] MOV X29, SP instruction at offset 3592: 0x910003fd
+[OGetGlobal] global 14 → type.kind=11
+[JIT] Function 16 assigned address at offset 0xf38
+[PROLOGUE] MOV X29, SP instruction at offset 3900: 0x910003fd
+[OGetGlobal] global 14 → type.kind=11
+[JIT] Function 16 assigned address at offset 0x1304
+[PROLOGUE] MOV X29, SP instruction at offset 4872: 0x910003fd
+[JIT] Function 17 assigned address at offset 0x1384
+[PROLOGUE] MOV X29, SP instruction at offset 5000: 0x910003fd
+[OCallClosure] closure_type=9, nargs=0
+[OCallClosure] About to call hl_dyn_call at 0x7fffb29a33b0
+[JIT] Function 18 assigned address at offset 0x1468
+[PROLOGUE] MOV X29, SP instruction at offset 5228: 0x910003fd
+[JIT] Function 19 assigned address at offset 0x151c
+[PROLOGUE] MOV X29, SP instruction at offset 5408: 0x910003fd
+[JIT] Function 20 assigned address at offset 0x1600
+[PROLOGUE] MOV X29, SP instruction at offset 5636: 0x910003fd
+[OGetGlobal] global 15 → type.kind=11
+[OGetGlobal] global 15 → type.kind=11
+[JIT] Function 21 assigned address at offset 0x1878
+[PROLOGUE] MOV X29, SP instruction at offset 6268: 0x910003fd
+[JIT] Function 0 assigned address at offset 0x1910
+[PROLOGUE] MOV X29, SP instruction at offset 6420: 0x910003fd
+[JIT] Function 1 assigned address at offset 0x1a14
+[PROLOGUE] MOV X29, SP instruction at offset 6680: 0x910003fd
+[JIT] Function 2 assigned address at offset 0x1b18
+[PROLOGUE] MOV X29, SP instruction at offset 6940: 0x910003fd
+[OGetGlobal] global 16 → type.kind=11
+[JIT] Function 3 assigned address at offset 0x1c90
+[PROLOGUE] MOV X29, SP instruction at offset 7316: 0x910003fd
+[JIT] Function 4 assigned address at offset 0x1d58
+[PROLOGUE] MOV X29, SP instruction at offset 7516: 0x910003fd
+[JIT] Function 5 assigned address at offset 0x1e8c
+[PROLOGUE] MOV X29, SP instruction at offset 7824: 0x910003fd
+[OGetGlobal] global 16 → type.kind=11
+[JIT] Function 6 assigned address at offset 0x21f4
+[PROLOGUE] MOV X29, SP instruction at offset 8696: 0x910003fd
+[JIT] Function 7 assigned address at offset 0x24c4
+[PROLOGUE] MOV X29, SP instruction at offset 9416: 0x910003fd
+[JIT] Function 269 assigned address at offset 0x252c
+[PROLOGUE] MOV X29, SP instruction at offset 9520: 0x910003fd
+[OGetGlobal] global 16 → type.kind=11
+[JIT] Function 237 assigned address at offset 0x2630
+[PROLOGUE] MOV X29, SP instruction at offset 9780: 0x910003fd
+[JIT] Function 257 assigned address at offset 0x26cc
+[PROLOGUE] MOV X29, SP instruction at offset 9936: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 8 assigned address at offset 0x2ab8
+[PROLOGUE] MOV X29, SP instruction at offset 10940: 0x910003fd
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 16 → type.kind=11
+[JIT] Function 8 assigned address at offset 0x3168
+[PROLOGUE] MOV X29, SP instruction at offset 12652: 0x910003fd
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 16 → type.kind=11
+[JIT] Function 9 assigned address at offset 0x3514
+[PROLOGUE] MOV X29, SP instruction at offset 13592: 0x910003fd
+[JIT] Function 10 assigned address at offset 0x3700
+[PROLOGUE] MOV X29, SP instruction at offset 14084: 0x910003fd
+[JIT] Function 11 assigned address at offset 0x3744
+[PROLOGUE] MOV X29, SP instruction at offset 14152: 0x910003fd
+[JIT] Function 12 assigned address at offset 0x37c4
+[PROLOGUE] MOV X29, SP instruction at offset 14280: 0x910003fd
+[JIT] Function 13 assigned address at offset 0x3814
+[PROLOGUE] MOV X29, SP instruction at offset 14360: 0x910003fd
+[OGetGlobal] global 2 → type.kind=11
+[JIT] Function 14 assigned address at offset 0x3854
+[PROLOGUE] MOV X29, SP instruction at offset 14424: 0x910003fd
+[JIT] Function 273 assigned address at offset 0x3c08
+[PROLOGUE] MOV X29, SP instruction at offset 15372: 0x910003fd
+[JIT] Function 274 assigned address at offset 0x3ce0
+[PROLOGUE] MOV X29, SP instruction at offset 15588: 0x910003fd
+[OGetGlobal] global 2 → type.kind=11
+[JIT] Function 275 assigned address at offset 0x42f0
+[PROLOGUE] MOV X29, SP instruction at offset 17140: 0x910003fd
+[OGetGlobal] global 14 → type.kind=11
+[OGetGlobal] global 14 → type.kind=11
+[JIT] Function 276 assigned address at offset 0x4a3c
+[PROLOGUE] MOV X29, SP instruction at offset 19008: 0x910003fd
+[JIT] Function 277 assigned address at offset 0x4d10
+[PROLOGUE] MOV X29, SP instruction at offset 19732: 0x910003fd
+[JIT] Function 278 assigned address at offset 0x4d78
+[PROLOGUE] MOV X29, SP instruction at offset 19836: 0x910003fd
+[JIT] Function 279 assigned address at offset 0x4dcc
+[PROLOGUE] MOV X29, SP instruction at offset 19920: 0x910003fd
+[OGetGlobal] global 19 → type.kind=11
+[OGetGlobal] global 13 → type.kind=11
+[JIT] Function 280 assigned address at offset 0x4e64
+[PROLOGUE] MOV X29, SP instruction at offset 20072: 0x910003fd
+[JIT] Function 284 assigned address at offset 0x4ecc
+[PROLOGUE] MOV X29, SP instruction at offset 20176: 0x910003fd
+[JIT] Function 285 assigned address at offset 0x4f5c
+[PROLOGUE] MOV X29, SP instruction at offset 20320: 0x910003fd
+[OGetGlobal] global 20 → type.kind=11
+[JIT] Function 288 assigned address at offset 0x5018
+[PROLOGUE] MOV X29, SP instruction at offset 20508: 0x910003fd
+[OGetGlobal] global 21 → type.kind=17
+[OCall0] Native function 289: fptr=0x7fffb29a4810
+[JIT] Function 290 assigned address at offset 0x5094
+[PROLOGUE] MOV X29, SP instruction at offset 20632: 0x910003fd
+[JIT] Function 294 assigned address at offset 0x51a4
+[PROLOGUE] MOV X29, SP instruction at offset 20904: 0x910003fd
+[OGetGlobal] global 21 → type.kind=17
+[JIT] Function 295 assigned address at offset 0x5208
+[PROLOGUE] MOV X29, SP instruction at offset 21004: 0x910003fd
+[OCall0] Native function 289: fptr=0x7fffb29a4810
+[JIT] Function 298 assigned address at offset 0x538c
+[PROLOGUE] MOV X29, SP instruction at offset 21392: 0x910003fd
+[JIT] Function 294 assigned address at offset 0x55a4
+[PROLOGUE] MOV X29, SP instruction at offset 21928: 0x910003fd
+[OGetGlobal] global 21 → type.kind=17
+[JIT] Function 301 assigned address at offset 0x55f4
+[PROLOGUE] MOV X29, SP instruction at offset 22008: 0x910003fd
+[OCall0] JIT function 305: eager JIT
+[OCall0] Eagerly JITing function 305
+[JIT] Function 305 assigned address at offset 0x562c
+[PROLOGUE] MOV X29, SP instruction at offset 22064: 0x910003fd
+[OCall0] Direct BL: target_offset=0x562c, call_site_offset=0x56a8, delta=-124
+[JIT] Function 302 assigned address at offset 0x5814
+[PROLOGUE] MOV X29, SP instruction at offset 22552: 0x910003fd
+[JIT] Function 303 assigned address at offset 0x5824
+[PROLOGUE] MOV X29, SP instruction at offset 22568: 0x910003fd
+[JIT] Function 304 assigned address at offset 0x5864
+[PROLOGUE] MOV X29, SP instruction at offset 22632: 0x910003fd
+[OCallThis] method_index=0, nargs=0
+[JIT] Function 303 assigned address at offset 0x58b0
+[PROLOGUE] MOV X29, SP instruction at offset 22708: 0x910003fd
+[JIT] Function 218 assigned address at offset 0x58d8
+[PROLOGUE] MOV X29, SP instruction at offset 22748: 0x910003fd
+[OGetGlobal] global 24 → type.kind=11
+[JIT] Function 31 assigned address at offset 0x59d4
+[PROLOGUE] MOV X29, SP instruction at offset 23000: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Eagerly JITing function 32
+[JIT] Function 32 assigned address at offset 0x5a2c
+[PROLOGUE] MOV X29, SP instruction at offset 23088: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Eagerly JITing function 28
+[JIT] Function 28 assigned address at offset 0x5a54
+[PROLOGUE] MOV X29, SP instruction at offset 23128: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 39 → type.kind=11
+[OGetGlobal] global 40 → type.kind=11
+[JIT] Function 320 assigned address at offset 0x5b20
+[PROLOGUE] MOV X29, SP instruction at offset 23332: 0x910003fd
+[OGetGlobal] global 33 → type.kind=11
+[JIT] Function 318 assigned address at offset 0x5b6c
+[PROLOGUE] MOV X29, SP instruction at offset 23408: 0x910003fd
+[OGetGlobal] global 28 → type.kind=11
+[OGetGlobal] global 28 → type.kind=11
+[OGetGlobal] global 28 → type.kind=11
+[OCallMethod] Resolved method_ptr=0x5a54
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OGetGlobal] global 25 → type.kind=11
+[OGetGlobal] global 26 → type.kind=11
+[JIT] Function 219 assigned address at offset 0x5dec
+[PROLOGUE] MOV X29, SP instruction at offset 24048: 0x910003fd
+[JIT] Function 308 assigned address at offset 0x5e24
+[PROLOGUE] MOV X29, SP instruction at offset 24104: 0x910003fd
+[JIT] Function 305 assigned address at offset 0x5e40
+[PROLOGUE] MOV X29, SP instruction at offset 24132: 0x910003fd
+[JIT] Function 310 assigned address at offset 0x5ebc
+[PROLOGUE] MOV X29, SP instruction at offset 24256: 0x910003fd
+[JIT] Function 311 assigned address at offset 0x5efc
+[PROLOGUE] MOV X29, SP instruction at offset 24320: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 312 assigned address at offset 0x6138
+[PROLOGUE] MOV X29, SP instruction at offset 24892: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[2], findex=33
+[OCallMethod] findex=33
+[OCallMethod] Eagerly JITing function 33
+[JIT] Function 33 assigned address at offset 0x6198
+[PROLOGUE] MOV X29, SP instruction at offset 24988: 0x910003fd
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[1], findex=29
+[OCallMethod] findex=29
+[OCallMethod] Eagerly JITing function 29
+[JIT] Function 29 assigned address at offset 0x61c4
+[PROLOGUE] MOV X29, SP instruction at offset 25032: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 39 → type.kind=11
+[OGetGlobal] global 41 → type.kind=11
+[OCallMethod] Resolved method_ptr=0x61c4
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[29] at runtime
+[OCallMethod] Resolved method_ptr=0x6198
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[33] at runtime
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[1], findex=29
+[OCallMethod] findex=29
+[OCallMethod] Resolved method_ptr=0x61c4
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[29] at runtime
+[JIT] Function 313 assigned address at offset 0x63dc
+[PROLOGUE] MOV X29, SP instruction at offset 25568: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 314 assigned address at offset 0x65fc
+[PROLOGUE] MOV X29, SP instruction at offset 26112: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 315 assigned address at offset 0x6878
+[PROLOGUE] MOV X29, SP instruction at offset 26748: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 316 assigned address at offset 0x6ab8
+[PROLOGUE] MOV X29, SP instruction at offset 27324: 0x910003fd
+[JIT] Function 317 assigned address at offset 0x6b2c
+[PROLOGUE] MOV X29, SP instruction at offset 27440: 0x910003fd
+[OCallMethod] type=3, method_index=0, nargs=2
+[OCallMethod] Non-object type 3 - using runtime dispatch
+[OCallMethod] Runtime dispatch: method_index=0
+[OCallMethod] Runtime dispatch generated (proto has absolute addresses)
+[OCallMethod] type=3, method_index=0, nargs=2
+[OCallMethod] Non-object type 3 - using runtime dispatch
+[OCallMethod] Runtime dispatch: method_index=0
+[OCallMethod] Runtime dispatch generated (proto has absolute addresses)
+[OCallMethod] type=3, method_index=1, nargs=3
+[OCallMethod] Non-object type 3 - using runtime dispatch
+[OCallMethod] Runtime dispatch: method_index=1
+[OCallMethod] Runtime dispatch generated (proto has absolute addresses)
+[OCallMethod] type=3, method_index=1, nargs=3
+[OCallMethod] Non-object type 3 - using runtime dispatch
+[OCallMethod] Runtime dispatch: method_index=1
+[OCallMethod] Runtime dispatch generated (proto has absolute addresses)
+[JIT] Function 311 assigned address at offset 0x6e20
+[PROLOGUE] MOV X29, SP instruction at offset 28196: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 313 assigned address at offset 0x7108
+[PROLOGUE] MOV X29, SP instruction at offset 28940: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 316 assigned address at offset 0x7460
+[PROLOGUE] MOV X29, SP instruction at offset 29796: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[2], findex=33
+[OCallMethod] findex=33
+[OCallMethod] Resolved method_ptr=0x6198
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[33] at runtime
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[2], findex=33
+[OCallMethod] findex=33
+[OCallMethod] Resolved method_ptr=0x6198
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[33] at runtime
+[JIT] Function 317 assigned address at offset 0x76b4
+[PROLOGUE] MOV X29, SP instruction at offset 30392: 0x910003fd
+[JIT] Function 315 assigned address at offset 0x7718
+[PROLOGUE] MOV X29, SP instruction at offset 30492: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 314 assigned address at offset 0x791c
+[PROLOGUE] MOV X29, SP instruction at offset 31008: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 312 assigned address at offset 0x7b20
+[PROLOGUE] MOV X29, SP instruction at offset 31524: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[2], findex=33
+[OCallMethod] findex=33
+[OCallMethod] Resolved method_ptr=0x6198
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[33] at runtime
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[2], findex=33
+[OCallMethod] findex=33
+[OCallMethod] Resolved method_ptr=0x6198
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[33] at runtime
+[JIT] Function 318 assigned address at offset 0x7bd0
+[PROLOGUE] MOV X29, SP instruction at offset 31700: 0x910003fd
+[OGetGlobal] global 28 → type.kind=11
+[OGetGlobal] global 28 → type.kind=11
+[OGetGlobal] global 28 → type.kind=11
+[JIT] Function 319 assigned address at offset 0x7d2c
+[PROLOGUE] MOV X29, SP instruction at offset 32048: 0x910003fd
+[OGetGlobal] global 16 → type.kind=11
+[OGetGlobal] global 29 → type.kind=11
+[OGetGlobal] global 30 → type.kind=11
+[OGetGlobal] global 31 → type.kind=11
+[OGetGlobal] global 24 → type.kind=11
+[JIT] Function 320 assigned address at offset 0x7f10
+[PROLOGUE] MOV X29, SP instruction at offset 32532: 0x910003fd
+[OGetGlobal] global 33 → type.kind=11
+[JIT] Function 321 assigned address at offset 0x7f70
+[PROLOGUE] MOV X29, SP instruction at offset 32628: 0x910003fd
+[JIT] Function 322 assigned address at offset 0x7fb0
+[PROLOGUE] MOV X29, SP instruction at offset 32692: 0x910003fd
+[JIT] Function 323 assigned address at offset 0x8020
+[PROLOGUE] MOV X29, SP instruction at offset 32804: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[1], findex=32
+[OCallMethod] findex=32
+[OCallMethod] Resolved method_ptr=0x5a2c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[32] at runtime
+[JIT] Function 324 assigned address at offset 0x80a4
+[PROLOGUE] MOV X29, SP instruction at offset 32936: 0x910003fd
+[JIT] Function 14 assigned address at offset 0x80d0
+[PROLOGUE] MOV X29, SP instruction at offset 32980: 0x910003fd
+[JIT] Function 344 assigned address at offset 0x8290
+[PROLOGUE] MOV X29, SP instruction at offset 33428: 0x910003fd
+[JIT] Function 345 assigned address at offset 0x82e8
+[PROLOGUE] MOV X29, SP instruction at offset 33516: 0x910003fd
+[JIT] Function 346 assigned address at offset 0x8340
+[PROLOGUE] MOV X29, SP instruction at offset 33604: 0x910003fd
+[JIT] Function 347 assigned address at offset 0x83b0
+[PROLOGUE] MOV X29, SP instruction at offset 33716: 0x910003fd
+[JIT] Function 348 assigned address at offset 0x8408
+[PROLOGUE] MOV X29, SP instruction at offset 33804: 0x910003fd
+[JIT] Function 349 assigned address at offset 0x8460
+[PROLOGUE] MOV X29, SP instruction at offset 33892: 0x910003fd
+[JIT] Function 28 assigned address at offset 0x84d0
+[PROLOGUE] MOV X29, SP instruction at offset 34004: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 39 → type.kind=11
+[OGetGlobal] global 40 → type.kind=11
+[JIT] Function 29 assigned address at offset 0x85b4
+[PROLOGUE] MOV X29, SP instruction at offset 34232: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 39 → type.kind=11
+[OGetGlobal] global 41 → type.kind=11
+[JIT] Function 30 assigned address at offset 0x869c
+[PROLOGUE] MOV X29, SP instruction at offset 34464: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 39 → type.kind=11
+[OGetGlobal] global 42 → type.kind=11
+[JIT] Function 78 assigned address at offset 0x878c
+[PROLOGUE] MOV X29, SP instruction at offset 34704: 0x910003fd
+[JIT] Function 79 assigned address at offset 0x87f0
+[PROLOGUE] MOV X29, SP instruction at offset 34804: 0x910003fd
+[JIT] Function 80 assigned address at offset 0x8854
+[PROLOGUE] MOV X29, SP instruction at offset 34904: 0x910003fd
+[JIT] Function 81 assigned address at offset 0x88b8
+[PROLOGUE] MOV X29, SP instruction at offset 35004: 0x910003fd
+[JIT] Function 61 assigned address at offset 0x891c
+[PROLOGUE] MOV X29, SP instruction at offset 35104: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 44 → type.kind=11
+[JIT] Function 62 assigned address at offset 0x8a00
+[PROLOGUE] MOV X29, SP instruction at offset 35332: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 45 → type.kind=11
+[JIT] Function 63 assigned address at offset 0x8ae0
+[PROLOGUE] MOV X29, SP instruction at offset 35556: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 46 → type.kind=11
+[JIT] Function 64 assigned address at offset 0x8bc0
+[PROLOGUE] MOV X29, SP instruction at offset 35780: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 47 → type.kind=11
+[JIT] Function 65 assigned address at offset 0x8ca4
+[PROLOGUE] MOV X29, SP instruction at offset 36008: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 48 → type.kind=11
+[JIT] Function 66 assigned address at offset 0x8d8c
+[PROLOGUE] MOV X29, SP instruction at offset 36240: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 49 → type.kind=11
+[JIT] Function 67 assigned address at offset 0x8e70
+[PROLOGUE] MOV X29, SP instruction at offset 36468: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 50 → type.kind=11
+[JIT] Function 68 assigned address at offset 0x8f54
+[PROLOGUE] MOV X29, SP instruction at offset 36696: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 51 → type.kind=11
+[JIT] Function 69 assigned address at offset 0x9038
+[PROLOGUE] MOV X29, SP instruction at offset 36924: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 52 → type.kind=11
+[JIT] Function 70 assigned address at offset 0x9120
+[PROLOGUE] MOV X29, SP instruction at offset 37156: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 53 → type.kind=11
+[JIT] Function 71 assigned address at offset 0x9208
+[PROLOGUE] MOV X29, SP instruction at offset 37388: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 54 → type.kind=11
+[JIT] Function 72 assigned address at offset 0x92ec
+[PROLOGUE] MOV X29, SP instruction at offset 37616: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 55 → type.kind=11
+[JIT] Function 73 assigned address at offset 0x93cc
+[PROLOGUE] MOV X29, SP instruction at offset 37840: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 56 → type.kind=11
+[JIT] Function 74 assigned address at offset 0x94b0
+[PROLOGUE] MOV X29, SP instruction at offset 38068: 0x910003fd
+[OGetGlobal] global 38 → type.kind=11
+[OGetGlobal] global 43 → type.kind=11
+[OGetGlobal] global 57 → type.kind=11
+[JIT] Function 77 assigned address at offset 0x9590
+[PROLOGUE] MOV X29, SP instruction at offset 38292: 0x910003fd
+[OCallThis] method_index=16, nargs=0
+[JIT] Function 75 assigned address at offset 0x95dc
+[PROLOGUE] MOV X29, SP instruction at offset 38368: 0x910003fd
+[JIT] Function 350 assigned address at offset 0x9630
+[PROLOGUE] MOV X29, SP instruction at offset 38452: 0x910003fd
+[JIT] Function 76 assigned address at offset 0x96d8
+[PROLOGUE] MOV X29, SP instruction at offset 38620: 0x910003fd
+[JIT] Function 351 assigned address at offset 0x96fc
+[PROLOGUE] MOV X29, SP instruction at offset 38656: 0x910003fd
+[JIT] Function 82 assigned address at offset 0x974c
+[PROLOGUE] MOV X29, SP instruction at offset 38736: 0x910003fd
+[JIT] Function 83 assigned address at offset 0x9924
+[PROLOGUE] MOV X29, SP instruction at offset 39208: 0x910003fd
+[JIT] Function 84 assigned address at offset 0x9a44
+[PROLOGUE] MOV X29, SP instruction at offset 39496: 0x910003fd
+[JIT] Function 85 assigned address at offset 0x9b5c
+[PROLOGUE] MOV X29, SP instruction at offset 39776: 0x910003fd
+[JIT] Function 115 assigned address at offset 0x9b9c
+[PROLOGUE] MOV X29, SP instruction at offset 39840: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 86 assigned address at offset 0x9e80
+[PROLOGUE] MOV X29, SP instruction at offset 40580: 0x910003fd
+[JIT] Function 87 assigned address at offset 0x9fe8
+[PROLOGUE] MOV X29, SP instruction at offset 40940: 0x910003fd
+[JIT] Function 88 assigned address at offset 0xa19c
+[PROLOGUE] MOV X29, SP instruction at offset 41376: 0x910003fd
+[OGetGlobal] global 59 → type.kind=18
+[JIT] Function 89 assigned address at offset 0xa34c
+[PROLOGUE] MOV X29, SP instruction at offset 41808: 0x910003fd
+[JIT] Function 352 assigned address at offset 0xa564
+[PROLOGUE] MOV X29, SP instruction at offset 42344: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 90 assigned address at offset 0xa650
+[PROLOGUE] MOV X29, SP instruction at offset 42580: 0x910003fd
+[JIT] Function 91 assigned address at offset 0xa76c
+[PROLOGUE] MOV X29, SP instruction at offset 42864: 0x910003fd
+[JIT] Function 92 assigned address at offset 0xaf54
+[PROLOGUE] MOV X29, SP instruction at offset 44888: 0x910003fd
+[JIT] Function 93 assigned address at offset 0xb0dc
+[PROLOGUE] MOV X29, SP instruction at offset 45280: 0x910003fd
+[JIT] Function 94 assigned address at offset 0xb370
+[PROLOGUE] MOV X29, SP instruction at offset 45940: 0x910003fd
+[JIT] Function 95 assigned address at offset 0xb724
+[PROLOGUE] MOV X29, SP instruction at offset 46888: 0x910003fd
+[JIT] Function 97 assigned address at offset 0xb770
+[PROLOGUE] MOV X29, SP instruction at offset 46964: 0x910003fd
+[JIT] Function 96 assigned address at offset 0xb958
+[PROLOGUE] MOV X29, SP instruction at offset 47452: 0x910003fd
+[JIT] Function 97 assigned address at offset 0xbbac
+[PROLOGUE] MOV X29, SP instruction at offset 48048: 0x910003fd
+[JIT] Function 98 assigned address at offset 0xbd44
+[PROLOGUE] MOV X29, SP instruction at offset 48456: 0x910003fd
+[JIT] Function 99 assigned address at offset 0xbed0
+[PROLOGUE] MOV X29, SP instruction at offset 48852: 0x910003fd
+[JIT] Function 100 assigned address at offset 0xc0a8
+[PROLOGUE] MOV X29, SP instruction at offset 49324: 0x910003fd
+[JIT] Function 355 assigned address at offset 0xc104
+[PROLOGUE] MOV X29, SP instruction at offset 49416: 0x910003fd
+[JIT] Function 101 assigned address at offset 0xc19c
+[PROLOGUE] MOV X29, SP instruction at offset 49568: 0x910003fd
+[JIT] Function 102 assigned address at offset 0xc214
+[PROLOGUE] MOV X29, SP instruction at offset 49688: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 103 assigned address at offset 0xc484
+[PROLOGUE] MOV X29, SP instruction at offset 50312: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 104 assigned address at offset 0xc648
+[PROLOGUE] MOV X29, SP instruction at offset 50764: 0x910003fd
+[JIT] Function 105 assigned address at offset 0xc820
+[PROLOGUE] MOV X29, SP instruction at offset 51236: 0x910003fd
+[JIT] Function 106 assigned address at offset 0xc910
+[PROLOGUE] MOV X29, SP instruction at offset 51476: 0x910003fd
+[JIT] Function 107 assigned address at offset 0xc9e4
+[PROLOGUE] MOV X29, SP instruction at offset 51688: 0x910003fd
+[JIT] Function 108 assigned address at offset 0xca44
+[PROLOGUE] MOV X29, SP instruction at offset 51784: 0x910003fd
+[JIT] Function 109 assigned address at offset 0xca94
+[PROLOGUE] MOV X29, SP instruction at offset 51864: 0x910003fd
+[JIT] Function 110 assigned address at offset 0xcae4
+[PROLOGUE] MOV X29, SP instruction at offset 51944: 0x910003fd
+[JIT] Function 111 assigned address at offset 0xcb40
+[PROLOGUE] MOV X29, SP instruction at offset 52036: 0x910003fd
+[JIT] Function 112 assigned address at offset 0xcba4
+[PROLOGUE] MOV X29, SP instruction at offset 52136: 0x910003fd
+[JIT] Function 113 assigned address at offset 0xcc04
+[PROLOGUE] MOV X29, SP instruction at offset 52232: 0x910003fd
+[JIT] Function 356 assigned address at offset 0xcc64
+[PROLOGUE] MOV X29, SP instruction at offset 52328: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 114 assigned address at offset 0xcd68
+[PROLOGUE] MOV X29, SP instruction at offset 52588: 0x910003fd
+[JIT] Function 115 assigned address at offset 0xce04
+[PROLOGUE] MOV X29, SP instruction at offset 52744: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 357 assigned address at offset 0xd144
+[PROLOGUE] MOV X29, SP instruction at offset 53576: 0x910003fd
+[JIT] Function 184 assigned address at offset 0xd1e4
+[PROLOGUE] MOV X29, SP instruction at offset 53736: 0x910003fd
+[JIT] Function 185 assigned address at offset 0xd45c
+[PROLOGUE] MOV X29, SP instruction at offset 54368: 0x910003fd
+[JIT] Function 186 assigned address at offset 0xd5b8
+[PROLOGUE] MOV X29, SP instruction at offset 54716: 0x910003fd
+[JIT] Function 187 assigned address at offset 0xd774
+[PROLOGUE] MOV X29, SP instruction at offset 55160: 0x910003fd
+[JIT] Function 217 assigned address at offset 0xd804
+[PROLOGUE] MOV X29, SP instruction at offset 55304: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 188 assigned address at offset 0xdc28
+[PROLOGUE] MOV X29, SP instruction at offset 56364: 0x910003fd
+[JIT] Function 189 assigned address at offset 0xde1c
+[PROLOGUE] MOV X29, SP instruction at offset 56864: 0x910003fd
+[JIT] Function 190 assigned address at offset 0xe0c4
+[PROLOGUE] MOV X29, SP instruction at offset 57544: 0x910003fd
+[OGetGlobal] global 59 → type.kind=18
+[JIT] Function 191 assigned address at offset 0xe2ec
+[PROLOGUE] MOV X29, SP instruction at offset 58096: 0x910003fd
+[JIT] Function 358 assigned address at offset 0xe5cc
+[PROLOGUE] MOV X29, SP instruction at offset 58832: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 192 assigned address at offset 0xe6d0
+[PROLOGUE] MOV X29, SP instruction at offset 59092: 0x910003fd
+[JIT] Function 193 assigned address at offset 0xe850
+[PROLOGUE] MOV X29, SP instruction at offset 59476: 0x910003fd
+[JIT] Function 194 assigned address at offset 0xee30
+[PROLOGUE] MOV X29, SP instruction at offset 60980: 0x910003fd
+[JIT] Function 195 assigned address at offset 0xefb8
+[PROLOGUE] MOV X29, SP instruction at offset 61372: 0x910003fd
+[JIT] Function 196 assigned address at offset 0xf24c
+[PROLOGUE] MOV X29, SP instruction at offset 62032: 0x910003fd
+[JIT] Function 197 assigned address at offset 0xf600
+[PROLOGUE] MOV X29, SP instruction at offset 62980: 0x910003fd
+[JIT] Function 199 assigned address at offset 0xf64c
+[PROLOGUE] MOV X29, SP instruction at offset 63056: 0x910003fd
+[JIT] Function 198 assigned address at offset 0xf834
+[PROLOGUE] MOV X29, SP instruction at offset 63544: 0x910003fd
+[JIT] Function 199 assigned address at offset 0xfa88
+[PROLOGUE] MOV X29, SP instruction at offset 64140: 0x910003fd
+[JIT] Function 200 assigned address at offset 0xfc20
+[PROLOGUE] MOV X29, SP instruction at offset 64548: 0x910003fd
+[JIT] Function 201 assigned address at offset 0xfdac
+[PROLOGUE] MOV X29, SP instruction at offset 64944: 0x910003fd
+[JIT] Function 202 assigned address at offset 0xff84
+[PROLOGUE] MOV X29, SP instruction at offset 65416: 0x910003fd
+[JIT] Function 361 assigned address at offset 0xffe0
+[PROLOGUE] MOV X29, SP instruction at offset 65508: 0x910003fd
+[JIT] Function 203 assigned address at offset 0x10078
+[PROLOGUE] MOV X29, SP instruction at offset 65660: 0x910003fd
+[JIT] Function 204 assigned address at offset 0x100f0
+[PROLOGUE] MOV X29, SP instruction at offset 65780: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 205 assigned address at offset 0x10360
+[PROLOGUE] MOV X29, SP instruction at offset 66404: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 206 assigned address at offset 0x10524
+[PROLOGUE] MOV X29, SP instruction at offset 66856: 0x910003fd
+[JIT] Function 207 assigned address at offset 0x106fc
+[PROLOGUE] MOV X29, SP instruction at offset 67328: 0x910003fd
+[JIT] Function 208 assigned address at offset 0x107ec
+[PROLOGUE] MOV X29, SP instruction at offset 67568: 0x910003fd
+[JIT] Function 209 assigned address at offset 0x108c0
+[PROLOGUE] MOV X29, SP instruction at offset 67780: 0x910003fd
+[JIT] Function 210 assigned address at offset 0x10920
+[PROLOGUE] MOV X29, SP instruction at offset 67876: 0x910003fd
+[JIT] Function 211 assigned address at offset 0x10970
+[PROLOGUE] MOV X29, SP instruction at offset 67956: 0x910003fd
+[JIT] Function 212 assigned address at offset 0x109c0
+[PROLOGUE] MOV X29, SP instruction at offset 68036: 0x910003fd
+[JIT] Function 213 assigned address at offset 0x10a1c
+[PROLOGUE] MOV X29, SP instruction at offset 68128: 0x910003fd
+[JIT] Function 214 assigned address at offset 0x10a80
+[PROLOGUE] MOV X29, SP instruction at offset 68228: 0x910003fd
+[JIT] Function 215 assigned address at offset 0x10ae0
+[PROLOGUE] MOV X29, SP instruction at offset 68324: 0x910003fd
+[JIT] Function 362 assigned address at offset 0x10b40
+[PROLOGUE] MOV X29, SP instruction at offset 68420: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 216 assigned address at offset 0x10c44
+[PROLOGUE] MOV X29, SP instruction at offset 68680: 0x910003fd
+[JIT] Function 217 assigned address at offset 0x10ce0
+[PROLOGUE] MOV X29, SP instruction at offset 68836: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 363 assigned address at offset 0x11020
+[PROLOGUE] MOV X29, SP instruction at offset 69668: 0x910003fd
+[JIT] Function 116 assigned address at offset 0x110c0
+[PROLOGUE] MOV X29, SP instruction at offset 69828: 0x910003fd
+[JIT] Function 117 assigned address at offset 0x11338
+[PROLOGUE] MOV X29, SP instruction at offset 70460: 0x910003fd
+[JIT] Function 118 assigned address at offset 0x11494
+[PROLOGUE] MOV X29, SP instruction at offset 70808: 0x910003fd
+[JIT] Function 119 assigned address at offset 0x11660
+[PROLOGUE] MOV X29, SP instruction at offset 71268: 0x910003fd
+[JIT] Function 149 assigned address at offset 0x116f0
+[PROLOGUE] MOV X29, SP instruction at offset 71412: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 120 assigned address at offset 0x11b14
+[PROLOGUE] MOV X29, SP instruction at offset 72472: 0x910003fd
+[JIT] Function 121 assigned address at offset 0x11d08
+[PROLOGUE] MOV X29, SP instruction at offset 72972: 0x910003fd
+[JIT] Function 122 assigned address at offset 0x11fc0
+[PROLOGUE] MOV X29, SP instruction at offset 73668: 0x910003fd
+[OGetGlobal] global 59 → type.kind=18
+[JIT] Function 123 assigned address at offset 0x121e8
+[PROLOGUE] MOV X29, SP instruction at offset 74220: 0x910003fd
+[JIT] Function 364 assigned address at offset 0x124c8
+[PROLOGUE] MOV X29, SP instruction at offset 74956: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 365 assigned address at offset 0x125dc
+[PROLOGUE] MOV X29, SP instruction at offset 75232: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 124 assigned address at offset 0x126f0
+[PROLOGUE] MOV X29, SP instruction at offset 75508: 0x910003fd
+[JIT] Function 125 assigned address at offset 0x128b8
+[PROLOGUE] MOV X29, SP instruction at offset 75964: 0x910003fd
+[JIT] Function 126 assigned address at offset 0x12e98
+[PROLOGUE] MOV X29, SP instruction at offset 77468: 0x910003fd
+[JIT] Function 127 assigned address at offset 0x13020
+[PROLOGUE] MOV X29, SP instruction at offset 77860: 0x910003fd
+[JIT] Function 128 assigned address at offset 0x132b4
+[PROLOGUE] MOV X29, SP instruction at offset 78520: 0x910003fd
+[JIT] Function 129 assigned address at offset 0x13668
+[PROLOGUE] MOV X29, SP instruction at offset 79468: 0x910003fd
+[JIT] Function 131 assigned address at offset 0x136b4
+[PROLOGUE] MOV X29, SP instruction at offset 79544: 0x910003fd
+[JIT] Function 130 assigned address at offset 0x1389c
+[PROLOGUE] MOV X29, SP instruction at offset 80032: 0x910003fd
+[JIT] Function 131 assigned address at offset 0x13af0
+[PROLOGUE] MOV X29, SP instruction at offset 80628: 0x910003fd
+[JIT] Function 132 assigned address at offset 0x13c88
+[PROLOGUE] MOV X29, SP instruction at offset 81036: 0x910003fd
+[JIT] Function 133 assigned address at offset 0x13e14
+[PROLOGUE] MOV X29, SP instruction at offset 81432: 0x910003fd
+[JIT] Function 134 assigned address at offset 0x13fec
+[PROLOGUE] MOV X29, SP instruction at offset 81904: 0x910003fd
+[JIT] Function 368 assigned address at offset 0x14048
+[PROLOGUE] MOV X29, SP instruction at offset 81996: 0x910003fd
+[JIT] Function 135 assigned address at offset 0x140e0
+[PROLOGUE] MOV X29, SP instruction at offset 82148: 0x910003fd
+[JIT] Function 136 assigned address at offset 0x14158
+[PROLOGUE] MOV X29, SP instruction at offset 82268: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 137 assigned address at offset 0x143c8
+[PROLOGUE] MOV X29, SP instruction at offset 82892: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 138 assigned address at offset 0x1458c
+[PROLOGUE] MOV X29, SP instruction at offset 83344: 0x910003fd
+[JIT] Function 139 assigned address at offset 0x14764
+[PROLOGUE] MOV X29, SP instruction at offset 83816: 0x910003fd
+[JIT] Function 140 assigned address at offset 0x14854
+[PROLOGUE] MOV X29, SP instruction at offset 84056: 0x910003fd
+[JIT] Function 141 assigned address at offset 0x14928
+[PROLOGUE] MOV X29, SP instruction at offset 84268: 0x910003fd
+[JIT] Function 142 assigned address at offset 0x14988
+[PROLOGUE] MOV X29, SP instruction at offset 84364: 0x910003fd
+[JIT] Function 143 assigned address at offset 0x149d8
+[PROLOGUE] MOV X29, SP instruction at offset 84444: 0x910003fd
+[JIT] Function 144 assigned address at offset 0x14a28
+[PROLOGUE] MOV X29, SP instruction at offset 84524: 0x910003fd
+[JIT] Function 145 assigned address at offset 0x14a84
+[PROLOGUE] MOV X29, SP instruction at offset 84616: 0x910003fd
+[JIT] Function 146 assigned address at offset 0x14ae8
+[PROLOGUE] MOV X29, SP instruction at offset 84716: 0x910003fd
+[JIT] Function 147 assigned address at offset 0x14b48
+[PROLOGUE] MOV X29, SP instruction at offset 84812: 0x910003fd
+[JIT] Function 369 assigned address at offset 0x14ba8
+[PROLOGUE] MOV X29, SP instruction at offset 84908: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 148 assigned address at offset 0x14cac
+[PROLOGUE] MOV X29, SP instruction at offset 85168: 0x910003fd
+[JIT] Function 149 assigned address at offset 0x14d48
+[PROLOGUE] MOV X29, SP instruction at offset 85324: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 370 assigned address at offset 0x15088
+[PROLOGUE] MOV X29, SP instruction at offset 86156: 0x910003fd
+[JIT] Function 150 assigned address at offset 0x15128
+[PROLOGUE] MOV X29, SP instruction at offset 86316: 0x910003fd
+[JIT] Function 151 assigned address at offset 0x153a0
+[PROLOGUE] MOV X29, SP instruction at offset 86948: 0x910003fd
+[JIT] Function 152 assigned address at offset 0x15504
+[PROLOGUE] MOV X29, SP instruction at offset 87304: 0x910003fd
+[JIT] Function 153 assigned address at offset 0x156e0
+[PROLOGUE] MOV X29, SP instruction at offset 87780: 0x910003fd
+[JIT] Function 183 assigned address at offset 0x15770
+[PROLOGUE] MOV X29, SP instruction at offset 87924: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 154 assigned address at offset 0x15ba4
+[PROLOGUE] MOV X29, SP instruction at offset 89000: 0x910003fd
+[JIT] Function 155 assigned address at offset 0x15dd0
+[PROLOGUE] MOV X29, SP instruction at offset 89556: 0x910003fd
+[JIT] Function 156 assigned address at offset 0x1609c
+[PROLOGUE] MOV X29, SP instruction at offset 90272: 0x910003fd
+[OGetGlobal] global 59 → type.kind=18
+[JIT] Function 157 assigned address at offset 0x162c4
+[PROLOGUE] MOV X29, SP instruction at offset 90824: 0x910003fd
+[JIT] Function 371 assigned address at offset 0x165a4
+[PROLOGUE] MOV X29, SP instruction at offset 91560: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 372 assigned address at offset 0x166a8
+[PROLOGUE] MOV X29, SP instruction at offset 91820: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 158 assigned address at offset 0x167ac
+[PROLOGUE] MOV X29, SP instruction at offset 92080: 0x910003fd
+[JIT] Function 159 assigned address at offset 0x16974
+[PROLOGUE] MOV X29, SP instruction at offset 92536: 0x910003fd
+[JIT] Function 160 assigned address at offset 0x16f54
+[PROLOGUE] MOV X29, SP instruction at offset 94040: 0x910003fd
+[JIT] Function 161 assigned address at offset 0x170e8
+[PROLOGUE] MOV X29, SP instruction at offset 94444: 0x910003fd
+[JIT] Function 162 assigned address at offset 0x17384
+[PROLOGUE] MOV X29, SP instruction at offset 95112: 0x910003fd
+[JIT] Function 163 assigned address at offset 0x17748
+[PROLOGUE] MOV X29, SP instruction at offset 96076: 0x910003fd
+[JIT] Function 165 assigned address at offset 0x17794
+[PROLOGUE] MOV X29, SP instruction at offset 96152: 0x910003fd
+[JIT] Function 164 assigned address at offset 0x17988
+[PROLOGUE] MOV X29, SP instruction at offset 96652: 0x910003fd
+[JIT] Function 165 assigned address at offset 0x17bdc
+[PROLOGUE] MOV X29, SP instruction at offset 97248: 0x910003fd
+[JIT] Function 166 assigned address at offset 0x17d80
+[PROLOGUE] MOV X29, SP instruction at offset 97668: 0x910003fd
+[JIT] Function 167 assigned address at offset 0x17f14
+[PROLOGUE] MOV X29, SP instruction at offset 98072: 0x910003fd
+[JIT] Function 168 assigned address at offset 0x180ec
+[PROLOGUE] MOV X29, SP instruction at offset 98544: 0x910003fd
+[JIT] Function 375 assigned address at offset 0x18148
+[PROLOGUE] MOV X29, SP instruction at offset 98636: 0x910003fd
+[JIT] Function 169 assigned address at offset 0x181e0
+[PROLOGUE] MOV X29, SP instruction at offset 98788: 0x910003fd
+[JIT] Function 170 assigned address at offset 0x18258
+[PROLOGUE] MOV X29, SP instruction at offset 98908: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 171 assigned address at offset 0x184d4
+[PROLOGUE] MOV X29, SP instruction at offset 99544: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 172 assigned address at offset 0x186a4
+[PROLOGUE] MOV X29, SP instruction at offset 100008: 0x910003fd
+[JIT] Function 173 assigned address at offset 0x1887c
+[PROLOGUE] MOV X29, SP instruction at offset 100480: 0x910003fd
+[JIT] Function 174 assigned address at offset 0x18970
+[PROLOGUE] MOV X29, SP instruction at offset 100724: 0x910003fd
+[JIT] Function 175 assigned address at offset 0x18a4c
+[PROLOGUE] MOV X29, SP instruction at offset 100944: 0x910003fd
+[JIT] Function 176 assigned address at offset 0x18aac
+[PROLOGUE] MOV X29, SP instruction at offset 101040: 0x910003fd
+[JIT] Function 177 assigned address at offset 0x18afc
+[PROLOGUE] MOV X29, SP instruction at offset 101120: 0x910003fd
+[JIT] Function 178 assigned address at offset 0x18b4c
+[PROLOGUE] MOV X29, SP instruction at offset 101200: 0x910003fd
+[JIT] Function 179 assigned address at offset 0x18ba8
+[PROLOGUE] MOV X29, SP instruction at offset 101292: 0x910003fd
+[JIT] Function 180 assigned address at offset 0x18c0c
+[PROLOGUE] MOV X29, SP instruction at offset 101392: 0x910003fd
+[JIT] Function 181 assigned address at offset 0x18c6c
+[PROLOGUE] MOV X29, SP instruction at offset 101488: 0x910003fd
+[JIT] Function 376 assigned address at offset 0x18ccc
+[PROLOGUE] MOV X29, SP instruction at offset 101584: 0x910003fd
+[OCallClosure] closure_type=10, nargs=2
+[JIT] Function 182 assigned address at offset 0x18dd0
+[PROLOGUE] MOV X29, SP instruction at offset 101844: 0x910003fd
+[JIT] Function 183 assigned address at offset 0x18e6c
+[PROLOGUE] MOV X29, SP instruction at offset 102000: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 377 assigned address at offset 0x191ac
+[PROLOGUE] MOV X29, SP instruction at offset 102832: 0x910003fd
+[JIT] Function 378 assigned address at offset 0x19230
+[PROLOGUE] MOV X29, SP instruction at offset 102964: 0x910003fd
+[JIT] Function 379 assigned address at offset 0x192dc
+[PROLOGUE] MOV X29, SP instruction at offset 103136: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 350 assigned address at offset 0x193b0
+[PROLOGUE] MOV X29, SP instruction at offset 103348: 0x910003fd
+[JIT] Function 380 assigned address at offset 0x19450
+[PROLOGUE] MOV X29, SP instruction at offset 103508: 0x910003fd
+[JIT] Function 31 assigned address at offset 0x194f0
+[PROLOGUE] MOV X29, SP instruction at offset 103668: 0x910003fd
+[JIT] Function 32 assigned address at offset 0x19558
+[PROLOGUE] MOV X29, SP instruction at offset 103772: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 33 assigned address at offset 0x195d8
+[PROLOGUE] MOV X29, SP instruction at offset 103900: 0x910003fd
+[OCallMethod] type=11, method_index=1, nargs=3
+[OCallMethod] Found method 1 in type proto[1], findex=29
+[OCallMethod] findex=29
+[OCallMethod] Resolved method_ptr=0x85b4
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[29] at runtime
+[JIT] Function 34 assigned address at offset 0x1965c
+[PROLOGUE] MOV X29, SP instruction at offset 104032: 0x910003fd
+[OCallMethod] type=11, method_index=2, nargs=5
+[OCallMethod] Found method 2 in type proto[2], findex=30
+[OCallMethod] findex=30
+[OCallMethod] Resolved method_ptr=0x869c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[30] at runtime
+[JIT] Function 35 assigned address at offset 0x196f0
+[PROLOGUE] MOV X29, SP instruction at offset 104180: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 36 assigned address at offset 0x19918
+[PROLOGUE] MOV X29, SP instruction at offset 104732: 0x910003fd
+[OCallMethod] type=11, method_index=13, nargs=2
+[OCallMethod] Found method 13 in type proto[10], findex=71
+[OCallMethod] findex=71
+[OCallMethod] Resolved method_ptr=0x9208
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[71] at runtime
+[JIT] Function 37 assigned address at offset 0x19998
+[PROLOGUE] MOV X29, SP instruction at offset 104860: 0x910003fd
+[OCallMethod] type=11, method_index=4, nargs=1
+[OCallMethod] Found method 4 in type proto[1], findex=62
+[OCallMethod] findex=62
+[OCallMethod] Resolved method_ptr=0x8a00
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[62] at runtime
+[JIT] Function 38 assigned address at offset 0x19a10
+[PROLOGUE] MOV X29, SP instruction at offset 104980: 0x910003fd
+[OCallMethod] type=11, method_index=3, nargs=2
+[OCallMethod] Found method 3 in type proto[0], findex=61
+[OCallMethod] findex=61
+[OCallMethod] Resolved method_ptr=0x891c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[61] at runtime
+[JIT] Function 39 assigned address at offset 0x19a90
+[PROLOGUE] MOV X29, SP instruction at offset 105108: 0x910003fd
+[OCallMethod] type=11, method_index=14, nargs=1
+[OCallMethod] Found method 14 in type proto[11], findex=72
+[OCallMethod] findex=72
+[OCallMethod] Resolved method_ptr=0x92ec
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[72] at runtime
+[JIT] Function 40 assigned address at offset 0x19b04
+[PROLOGUE] MOV X29, SP instruction at offset 105224: 0x910003fd
+[OCallMethod] type=11, method_index=15, nargs=2
+[OCallMethod] Found method 15 in type proto[12], findex=73
+[OCallMethod] findex=73
+[OCallMethod] Resolved method_ptr=0x93cc
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[73] at runtime
+[JIT] Function 41 assigned address at offset 0x19b80
+[PROLOGUE] MOV X29, SP instruction at offset 105348: 0x910003fd
+[OCallMethod] type=11, method_index=5, nargs=1
+[OCallMethod] Found method 5 in type proto[2], findex=63
+[OCallMethod] findex=63
+[OCallMethod] Resolved method_ptr=0x8ae0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[63] at runtime
+[JIT] Function 42 assigned address at offset 0x19bf8
+[PROLOGUE] MOV X29, SP instruction at offset 105468: 0x910003fd
+[OCallMethod] type=11, method_index=11, nargs=3
+[OCallMethod] Found method 11 in type proto[8], findex=69
+[OCallMethod] findex=69
+[OCallMethod] Resolved method_ptr=0x9038
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[69] at runtime
+[JIT] Function 43 assigned address at offset 0x19ca4
+[PROLOGUE] MOV X29, SP instruction at offset 105640: 0x910003fd
+[OCallMethod] type=11, method_index=10, nargs=2
+[OCallMethod] Found method 10 in type proto[7], findex=68
+[OCallMethod] findex=68
+[OCallMethod] Resolved method_ptr=0x8f54
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[68] at runtime
+[JIT] Function 44 assigned address at offset 0x19d20
+[PROLOGUE] MOV X29, SP instruction at offset 105764: 0x910003fd
+[OCallMethod] type=11, method_index=12, nargs=3
+[OCallMethod] Found method 12 in type proto[9], findex=70
+[OCallMethod] findex=70
+[OCallMethod] Resolved method_ptr=0x9120
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[70] at runtime
+[JIT] Function 45 assigned address at offset 0x19dcc
+[PROLOGUE] MOV X29, SP instruction at offset 105936: 0x910003fd
+[OCallMethod] type=11, method_index=16, nargs=1
+[OCallMethod] Found method 16 in type proto[13], findex=74
+[OCallMethod] findex=74
+[OCallMethod] Resolved method_ptr=0x94b0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[74] at runtime
+[JIT] Function 60 assigned address at offset 0x19e44
+[PROLOGUE] MOV X29, SP instruction at offset 106056: 0x910003fd
+[JIT] Function 46 assigned address at offset 0x19eac
+[PROLOGUE] MOV X29, SP instruction at offset 106160: 0x910003fd
+[OCallMethod] type=11, method_index=6, nargs=2
+[OCallMethod] Found method 6 in type proto[3], findex=64
+[OCallMethod] findex=64
+[OCallMethod] Resolved method_ptr=0x8bc0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[64] at runtime
+[JIT] Function 47 assigned address at offset 0x19f28
+[PROLOGUE] MOV X29, SP instruction at offset 106284: 0x910003fd
+[OCallMethod] type=11, method_index=7, nargs=3
+[OCallMethod] Found method 7 in type proto[4], findex=65
+[OCallMethod] findex=65
+[OCallMethod] Resolved method_ptr=0x8ca4
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[65] at runtime
+[JIT] Function 48 assigned address at offset 0x19fac
+[PROLOGUE] MOV X29, SP instruction at offset 106416: 0x910003fd
+[OCallMethod] type=11, method_index=8, nargs=2
+[OCallMethod] Found method 8 in type proto[5], findex=66
+[OCallMethod] findex=66
+[OCallMethod] Resolved method_ptr=0x8d8c
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[66] at runtime
+[JIT] Function 49 assigned address at offset 0x1a02c
+[PROLOGUE] MOV X29, SP instruction at offset 106544: 0x910003fd
+[OCallMethod] type=11, method_index=9, nargs=2
+[OCallMethod] Found method 9 in type proto[6], findex=67
+[OCallMethod] findex=67
+[OCallMethod] Resolved method_ptr=0x8e70
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[67] at runtime
+[JIT] Function 50 assigned address at offset 0x1a0ac
+[PROLOGUE] MOV X29, SP instruction at offset 106672: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 51 assigned address at offset 0x1a1c8
+[PROLOGUE] MOV X29, SP instruction at offset 106956: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 52 assigned address at offset 0x1a374
+[PROLOGUE] MOV X29, SP instruction at offset 107384: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 53 assigned address at offset 0x1a508
+[PROLOGUE] MOV X29, SP instruction at offset 107788: 0x910003fd
+[JIT] Function 54 assigned address at offset 0x1a584
+[PROLOGUE] MOV X29, SP instruction at offset 107912: 0x910003fd
+[JIT] Function 55 assigned address at offset 0x1a608
+[PROLOGUE] MOV X29, SP instruction at offset 108044: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 56 assigned address at offset 0x1a84c
+[PROLOGUE] MOV X29, SP instruction at offset 108624: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 57 assigned address at offset 0x1aa54
+[PROLOGUE] MOV X29, SP instruction at offset 109144: 0x910003fd
+[JIT] Function 58 assigned address at offset 0x1ab04
+[PROLOGUE] MOV X29, SP instruction at offset 109320: 0x910003fd
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[OCallMethod] type=11, method_index=0, nargs=2
+[OCallMethod] Found method 0 in type proto[0], findex=28
+[OCallMethod] findex=28
+[OCallMethod] Resolved method_ptr=0x84d0
+[OCallMethod] Compile-time dispatch: loading from m->functions_ptrs[28] at runtime
+[JIT] Function 59 assigned address at offset 0x1b048
+[PROLOGUE] MOV X29, SP instruction at offset 110668: 0x910003fd
+[JIT] Function 381 assigned address at offset 0x1b0f4
+[PROLOGUE] MOV X29, SP instruction at offset 110840: 0x910003fd
+[JIT] Function 382 assigned address at offset 0x1b178
+[PROLOGUE] MOV X29, SP instruction at offset 110972: 0x910003fd
+[JIT] Function 383 assigned address at offset 0x1b224
+[PROLOGUE] MOV X29, SP instruction at offset 111144: 0x910003fd
+[JIT] Function 269 assigned address at offset 0x1b2fc
+[PROLOGUE] MOV X29, SP instruction at offset 111360: 0x910003fd
+[JIT] Function 298 assigned address at offset 0x1b398
+[PROLOGUE] MOV X29, SP instruction at offset 111516: 0x910003fd
+[JIT] Function 233 assigned address at offset 0x1b444
+[PROLOGUE] MOV X29, SP instruction at offset 111688: 0x910003fd
+[JIT] Function 234 assigned address at offset 0x1b5d0
+[PROLOGUE] MOV X29, SP instruction at offset 112084: 0x910003fd
+[JIT] Function 235 assigned address at offset 0x1b718
+[PROLOGUE] MOV X29, SP instruction at offset 112412: 0x910003fd
+[JIT] Function 236 assigned address at offset 0x1b750
+[PROLOGUE] MOV X29, SP instruction at offset 112468: 0x910003fd
+[JIT] Function 237 assigned address at offset 0x1b8ec
+[PROLOGUE] MOV X29, SP instruction at offset 112880: 0x910003fd
+[JIT] Function 238 assigned address at offset 0x1ba5c
+[PROLOGUE] MOV X29, SP instruction at offset 113248: 0x910003fd
+[JIT] Function 239 assigned address at offset 0x1bc20
+[PROLOGUE] MOV X29, SP instruction at offset 113700: 0x910003fd
+[JIT] Function 240 assigned address at offset 0x1be38
+[PROLOGUE] MOV X29, SP instruction at offset 114236: 0x910003fd
+[JIT] Function 241 assigned address at offset 0x1c098
+[PROLOGUE] MOV X29, SP instruction at offset 114844: 0x910003fd
+[JIT] Function 242 assigned address at offset 0x1c0f4
+[PROLOGUE] MOV X29, SP instruction at offset 114936: 0x910003fd
+[JIT] Function 243 assigned address at offset 0x1c4b0
+[PROLOGUE] MOV X29, SP instruction at offset 115892: 0x910003fd
+[OGetGlobal] global 67 → type.kind=11
+[OGetGlobal] global 68 → type.kind=11
+[OGetGlobal] global 67 → type.kind=11
+[OGetGlobal] global 67 → type.kind=11
+[OGetGlobal] global 67 → type.kind=11
+[JIT] Function 244 assigned address at offset 0x1c754
+[PROLOGUE] MOV X29, SP instruction at offset 116568: 0x910003fd
+[JIT] Function 245 assigned address at offset 0x1c978
+[PROLOGUE] MOV X29, SP instruction at offset 117116: 0x910003fd
+[JIT] Function 246 assigned address at offset 0x1cc84
+[PROLOGUE] MOV X29, SP instruction at offset 117896: 0x910003fd
+[JIT] Function 248 assigned address at offset 0x1ccd0
+[PROLOGUE] MOV X29, SP instruction at offset 117972: 0x910003fd
+[JIT] Function 247 assigned address at offset 0x1ce88
+[PROLOGUE] MOV X29, SP instruction at offset 118412: 0x910003fd
+[JIT] Function 248 assigned address at offset 0x1d094
+[PROLOGUE] MOV X29, SP instruction at offset 118936: 0x910003fd
+[JIT] Function 249 assigned address at offset 0x1d1fc
+[PROLOGUE] MOV X29, SP instruction at offset 119296: 0x910003fd
+[OGetGlobal] global 59 → type.kind=18
+[JIT] Function 250 assigned address at offset 0x1d37c
+[PROLOGUE] MOV X29, SP instruction at offset 119680: 0x910003fd
+[JIT] Function 251 assigned address at offset 0x1d4fc
+[PROLOGUE] MOV X29, SP instruction at offset 120064: 0x910003fd
+[JIT] Function 252 assigned address at offset 0x1d5f8
+[PROLOGUE] MOV X29, SP instruction at offset 120316: 0x910003fd
+[JIT] Function 253 assigned address at offset 0x1d668
+[PROLOGUE] MOV X29, SP instruction at offset 120428: 0x910003fd
+[JIT] Function 254 assigned address at offset 0x1d6e0
+[PROLOGUE] MOV X29, SP instruction at offset 120548: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 255 assigned address at offset 0x1d944
+[PROLOGUE] MOV X29, SP instruction at offset 121160: 0x910003fd
+[OCallClosure] closure_type=10, nargs=1
+[JIT] Function 256 assigned address at offset 0x1dafc
+[PROLOGUE] MOV X29, SP instruction at offset 121600: 0x910003fd
+[JIT] Function 257 assigned address at offset 0x1dc80
+[PROLOGUE] MOV X29, SP instruction at offset 121988: 0x910003fd
+[OGetGlobal] global 61 → type.kind=11
+[JIT] Function 258 assigned address at offset 0x1dec0
+[PROLOGUE] MOV X29, SP instruction at offset 122564: 0x910003fd
+[JIT] Function 259 assigned address at offset 0x1df74
+[PROLOGUE] MOV X29, SP instruction at offset 122744: 0x910003fd
+[JIT] Function 260 assigned address at offset 0x1e088
+[PROLOGUE] MOV X29, SP instruction at offset 123020: 0x910003fd
+[JIT] Function 261 assigned address at offset 0x1e0e0
+[PROLOGUE] MOV X29, SP instruction at offset 123108: 0x910003fd
+[JIT] Function 262 assigned address at offset 0x1e130
+[PROLOGUE] MOV X29, SP instruction at offset 123188: 0x910003fd
+[JIT] Function 263 assigned address at offset 0x1e180
+[PROLOGUE] MOV X29, SP instruction at offset 123268: 0x910003fd
+[JIT] Function 264 assigned address at offset 0x1e1d4
+[PROLOGUE] MOV X29, SP instruction at offset 123352: 0x910003fd
+[JIT] Function 265 assigned address at offset 0x1e230
+[PROLOGUE] MOV X29, SP instruction at offset 123444: 0x910003fd
+[JIT] Function 266 assigned address at offset 0x1e288
+[PROLOGUE] MOV X29, SP instruction at offset 123532: 0x910003fd
+[JIT] Function 267 assigned address at offset 0x1e2e0
+[PROLOGUE] MOV X29, SP instruction at offset 123620: 0x910003fd
+[JIT] Function 355 assigned address at offset 0x1e334
+[PROLOGUE] MOV X29, SP instruction at offset 123704: 0x910003fd
+[JIT] Function 353 assigned address at offset 0x1e3b8
+[PROLOGUE] MOV X29, SP instruction at offset 123836: 0x910003fd
+[JIT] Function 354 assigned address at offset 0x1e464
+[PROLOGUE] MOV X29, SP instruction at offset 124008: 0x910003fd
+[JIT] Function 361 assigned address at offset 0x1e550
+[PROLOGUE] MOV X29, SP instruction at offset 124244: 0x910003fd
+[JIT] Function 359 assigned address at offset 0x1e5d4
+[PROLOGUE] MOV X29, SP instruction at offset 124376: 0x910003fd
+[JIT] Function 360 assigned address at offset 0x1e680
+[PROLOGUE] MOV X29, SP instruction at offset 124548: 0x910003fd
+[JIT] Function 368 assigned address at offset 0x1e76c
+[PROLOGUE] MOV X29, SP instruction at offset 124784: 0x910003fd
+[JIT] Function 366 assigned

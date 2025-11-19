@@ -654,7 +654,8 @@ int hl_module_init( hl_module *m, h_bool hot_reload ) {
 	// RESET globals
 	for(i=0;i<m->code->nglobals;i++) {
 		hl_type *t = m->code->globals[i];
-		if( t->kind == HFUN ) *(void**)(m->globals_data + m->globals_indexes[i]) = null_function;
+		if( t->kind == HFUN )
+			*(void**)(m->globals_data + m->globals_indexes[i]) = null_function;
 		if( hl_is_ptr(t) )
 			hl_add_root(m->globals_data+m->globals_indexes[i]);
 	}
@@ -677,6 +678,10 @@ int hl_module_init( hl_module *m, h_bool hot_reload ) {
 		m->functions_ptrs[f->findex] = (void*)(int_val)fpos;
 	}
 	m->jit_code = hl_jit_code(ctx, m, &m->codesize, &m->jit_debug, NULL);
+	if (m->jit_code == NULL) {
+		hl_jit_free(ctx, false);
+		return 0;
+	}
 	for(i=0;i<m->code->nfunctions;i++) {
 		hl_function *f = m->code->functions + i;
 		m->functions_ptrs[f->findex] = ((unsigned char*)m->jit_code) + ((int_val)m->functions_ptrs[f->findex]);

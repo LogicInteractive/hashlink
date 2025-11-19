@@ -23,6 +23,19 @@
 #include <hlmodule.h>
 #include "hlsystem.h"
 
+// =====================================================================
+// Architecture Detection (same as jit.c)
+// =====================================================================
+#if !defined(HL_JIT_X86) && !defined(HL_JIT_ARM64) && !defined(HL_JIT_ARM32)
+#   if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#       define HL_JIT_X86
+#   elif defined(__aarch64__) || defined(_M_ARM64)
+#       define HL_JIT_ARM64
+#   elif defined(__arm__) || defined(_M_ARM)
+#       define HL_JIT_ARM32
+#   endif
+#endif
+
 #ifdef HL_WIN
 #	include <locale.h>
 typedef uchar pchar;
@@ -287,17 +300,42 @@ int main(int argc, pchar *argv[]) {
 	}
 	hl_setup.load_plugin = load_plugin;
 	hl_setup.resolve_type = resolve_type;
-	hl_code_free(ctx.code);
 	if( debug_port > 0 && !hl_module_debug(ctx.m,debug_port,debug_wait) ) {
 		fprintf(stderr,"Could not start debugger on port %d\n",debug_port);
 		return 4;
 	}
+	// Setup entry point BEFORE freeing ctx.code
 	cl.t = ctx.code->functions[ctx.m->functions_indexes[ctx.m->code->entrypoint]].type;
 	cl.fun = ctx.m->functions_ptrs[ctx.m->code->entrypoint];
 	cl.hasValue = 0;
+#ifdef HL_64
+	cl.stackCount = 0;
+#endif
+	cl.value = NULL;
+	hl_code_free(ctx.code);
 	setup_handler();
 	hl_profile_setup(profile_count);
+#ifdef HL_JIT_ARM64
+	// ARM64: Call entry point directly with proper BLR to set up LR correctly
+	typedef void (*hl_main_t)(void*);
+	hl_main_t main_func = (hl_main_t)cl.fun;
+	void *module_ptr = ctx.m;
+	isExc = 0;
+	__asm__ volatile (
+		"mov x0, %[mod]\n\t"      // Pass module pointer as first arg
+		"blr %[func]\n\t"         // Branch with link - sets LR correctly
+		:
+		: [func] "r" (main_func), [mod] "r" (module_ptr)
+		: "x0","x1","x2","x3","x4","x5","x6","x7","x8","x9","x10","x11","x12","x13","x14","x15","x16","x17","x30","memory"
+	);
+	printf("[MAIN] BLR returned!\n");
+	fflush(stdout);
+	ctx.ret = NULL;  // Entry point doesn't return a value
+#else
 	ctx.ret = hl_dyn_call_safe(&cl,NULL,0,&isExc);
+#endif
+	printf("[MAIN] Entry point returned successfully!\n");
+	fflush(stdout);
 	hl_profile_end();
 	if( isExc ) {
 		hl_print_uncaught_exception(ctx.ret);
