@@ -3852,6 +3852,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	op_enter(ctx);
 #elif defined(HL_JIT_ARM64)
 	// ARM64: totalRegsSize is space for locals; we need +16 for saved FP/LR
+	printf("[JIT] Function %d (%s) at offset 0x%x, framesize=%d\n",
+	       f->findex,
+	       hl_to_utf8(f->obj ? f->obj->name : USTR("???")),
+	       BUF_POS(),
+	       ctx->totalRegsSize + 16);
 	arm_prologue(ctx, ctx->totalRegsSize + 16);
 #endif
 #	ifdef HL_64
@@ -4494,6 +4499,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					int offset = (int)(delta / 4);
 					unsigned int bl_instr = 0x94000000 | (offset & 0x03FFFFFF);
 					B32(bl_instr);
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
 				} else {
 					// Fall back to indirect call if target is too far
 					void *target_addr = ctx->startBuf + target_offset;
@@ -4544,6 +4550,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
 				} else {
 					// Fall back to indirect call
 					void *target_addr = ctx->startBuf + target_offset;
@@ -4593,6 +4600,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
 				} else {
 					// Fall back to indirect call
 					void *target_addr = ctx->startBuf + target_offset;
@@ -4644,6 +4652,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
 				} else {
 					// Fall back to indirect call
 					void *target_addr = ctx->startBuf + target_offset;
@@ -4697,6 +4706,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
 				} else {
 					// Fall back to indirect call
 					void *target_addr = ctx->startBuf + target_offset;
@@ -5352,6 +5362,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				if (delta >= -134217728LL && delta < 134217728LL) {
 					int offset = (int)(delta / 4);
 					B32(0x94000000 | (offset & 0x03FFFFFF));
+					arm_add_imm(ctx, X29, XZR, 0, true);  // Restore X29 after BL
 				} else {
 					// Fall back to indirect call
 					void *target_addr = ctx->startBuf + target_offset;
@@ -7151,19 +7162,26 @@ static int arm_b(jit_ctx *ctx, int offset) {
 
 // BL (branch with link): Call function at PC + (offset << 2)
 // Format: 1 00101 imm26(26)
+// CRITICAL: Also restores X29 after BL to fix corruption from called JIT functions
 static int arm_bl(jit_ctx *ctx, int offset) {
 	int pos = ARM_BUF_POS();
 	if (offset == 0) {
 		B32(0x94000000);  // BL with 0 offset
-		return pos;
+		// X29 restore added below
+	} else {
+		if (!arm_fits_signed(offset >> 2, 26)) {
+			ASSERT(10);
+			return pos;
+		}
+		unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
+		unsigned int inst = (0x25 << 26) | imm26;
+		B32(inst);
 	}
-	if (!arm_fits_signed(offset >> 2, 26)) {
-		ASSERT(10);
-		return pos;
-	}
-	unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
-	unsigned int inst = (0x25 << 26) | imm26;
-	B32(inst);
+
+	// NUCLEAR FIX: Restore X29 after BL to fix corruption from called functions
+	// Called JIT functions might have X29 corrupted by their native calls
+	// Even though epilogue should restore it, defensive restore here ensures correctness
+	arm_add_imm(ctx, X29, XZR, 0, true);  // ADD X29, SP, #0
 	return pos;
 }
 
@@ -7176,9 +7194,23 @@ static void arm_br(jit_ctx *ctx, Arm64Reg rn) {
 
 // BLR (branch with link to register): Call function at address in register
 // Format: 1101011 0001 11111 000000 Rn(5) 00000
+// CRITICAL: Automatically restores X29 after BLR to fix native function corruption
 static void arm_blr(jit_ctx *ctx, Arm64Reg rn) {
+	int pos_before = ARM_BUF_POS();
 	unsigned int inst = (0xD63F << 16) | (arm_reg(rn) << 5);
 	B32(inst);
+	int pos_after_blr = ARM_BUF_POS();
+
+	// NUCLEAR FIX: Always restore X29 after ANY BLR
+	// Some native C functions corrupt X29 (frame pointer) despite ARM64 AAPCS
+	// requiring it to be callee-saved. In our JIT ABI, X29 always equals SP,
+	// so we can safely restore it after every call.
+	// This adds 4 bytes per BLR but guarantees correctness.
+	// Generates: ADD X29, SP, #0  (opcode 0x910003FD)
+	arm_add_imm(ctx, X29, XZR, 0, true);
+	int pos_after_restore = ARM_BUF_POS();
+	printf("[arm_blr] BLR at offset %d, X29 restore at offset %d (sizes: %d, %d bytes)\n",
+	       pos_before, pos_after_blr, pos_after_blr - pos_before, pos_after_restore - pos_after_blr);
 }
 
 // arm_call_native: Defensive wrapper for calling native C functions
