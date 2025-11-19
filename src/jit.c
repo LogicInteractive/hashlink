@@ -3379,13 +3379,13 @@ static int jit_build_arm64( jit_ctx *ctx, void (*fbuild)( jit_ctx *) ) {
 	int pos;
 	jit_buf(ctx);
 	// ARM64 requires 4-byte alignment for instructions
-	while (BUF_POS() & 3) {
+	while (ARM_BUF_POS() & 3) {
 		*ctx->buf.b++ = 0;
 	}
-	pos = BUF_POS();
+	pos = ARM_BUF_POS();
 	fbuild(ctx);
 	// Align after as well
-	while (BUF_POS() & 3) {
+	while (ARM_BUF_POS() & 3) {
 		*ctx->buf.b++ = 0;
 	}
 	return pos;
@@ -3600,7 +3600,7 @@ void hl_jit_patch_method_arm64( void *old_fun, void **new_fun_table ) {
 void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **debug ) {
 	fprintf(stderr, "[ARM64_CODE] hl_jit_code_arm64 called!\n");
 	fflush(stderr);
-	int size = BUF_POS();
+	int size = ARM_BUF_POS();
 	unsigned char *code;
 
 	// Align to page boundary
@@ -3611,7 +3611,7 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 	if( code == NULL ) return NULL;
 
 	// Copy generated code to executable memory
-	memcpy(code,ctx->startBuf,BUF_POS());
+	memcpy(code,ctx->startBuf,ARM_BUF_POS());
 	*codesize = size;
 	*debug = ctx->debug;
 
@@ -3699,7 +3699,7 @@ void *hl_jit_code_arm64( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_inf
 
 	// ARM64 CRITICAL: Flush instruction cache
 	// Without this, the CPU may execute stale cached instructions
-	__builtin___clear_cache((char*)code, (char*)code + BUF_POS());
+	__builtin___clear_cache((char*)code, (char*)code + ARM_BUF_POS());
 
 	return code;
 }
@@ -3850,7 +3850,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	// CRITICAL FIX: Set function pointer EARLY for eager JIT compilation
 	// This allows recursive calls and forward calls to see this function's address
 	// Even though the function body isn't generated yet, the address is valid
-	m->functions_ptrs[f->findex] = (void*)(int_val)BUF_POS();
+	m->functions_ptrs[f->findex] = (void*)(int_val)ARM_BUF_POS();
 #endif
 
 	// make sure currentPos is > 0 before any reg allocations happen
@@ -3863,7 +3863,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	printf("[JIT] Function %d (%s) at offset 0x%x, framesize=%d\n",
 	       f->findex,
 	       hl_to_utf8(f->obj ? f->obj->name : USTR("???")),
-	       BUF_POS(),
+	       ARM_BUF_POS(),
 	       ctx->totalRegsSize + 16);
 	arm_prologue(ctx, ctx->totalRegsSize + 16);
 #endif
@@ -3903,9 +3903,17 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #	endif
 	if( ctx->m->code->hasdebug ) {
 		debug16 = (unsigned short*)malloc(sizeof(unsigned short) * (f->nops + 1));
+#ifdef HL_JIT_ARM64
+		debug16[0] = (unsigned short)(ARM_BUF_POS() - codePos);
+#else
 		debug16[0] = (unsigned short)(BUF_POS() - codePos);
+#endif
 	}
+#ifdef HL_JIT_ARM64
+	ctx->opsPos[0] = ARM_BUF_POS();
+#else
 	ctx->opsPos[0] = BUF_POS();
+#endif
 
 	for(opCount=0;opCount<f->nops;opCount++) {
 		int jump;
@@ -3915,7 +3923,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		vreg *rb = R(o->p3);
 		ctx->currentPos = opCount + 1;
 		jit_buf(ctx);
+#ifdef HL_JIT_ARM64
+		ctx->opsPos[opCount + 1] = ARM_BUF_POS();
+#else
 		ctx->opsPos[opCount + 1] = BUF_POS();
+#endif
 #		ifdef JIT_DEBUG
 		if( opCount == 0 || f->ops[opCount-1].op != OAsm ) {
 			int uid = opCount + (f->findex<<16);
