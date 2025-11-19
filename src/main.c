@@ -315,16 +315,12 @@ int main(int argc, pchar *argv[]) {
 	hl_code_free(ctx.code);
 	setup_handler();
 	hl_profile_setup(profile_count);
-	printf("[MAIN] Calling entry point %d at address %p\n", ctx.m->code->entrypoint, cl.fun);
-	fflush(stdout);
 #ifdef HL_JIT_ARM64
 	// ARM64: Call entry point directly with proper BLR to set up LR correctly
 	typedef void (*hl_main_t)(void*);
 	hl_main_t main_func = (hl_main_t)cl.fun;
 	void *module_ptr = ctx.m;
 	isExc = 0;
-	printf("[MAIN] About to BLR to %p with arg %p\n", (void*)main_func, module_ptr);
-	fflush(stdout);
 	__asm__ volatile (
 		"mov x0, %[mod]\n\t"      // Pass module pointer as first arg
 		"blr %[func]\n\t"         // Branch with link - sets LR correctly

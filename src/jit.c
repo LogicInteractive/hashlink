@@ -7216,9 +7216,6 @@ static void arm_blr(jit_ctx *ctx, Arm64Reg rn) {
 	// This adds 4 bytes per BLR but guarantees correctness.
 	// Generates: ADD X29, SP, #0  (opcode 0x910003FD)
 	arm_add_imm(ctx, X29, XZR, 0, true);
-	int pos_after_restore = ARM_BUF_POS();
-	printf("[arm_blr] BLR at offset %d, X29 restore at offset %d (sizes: %d, %d bytes)\n",
-	       pos_before, pos_after_blr, pos_after_blr - pos_before, pos_after_restore - pos_after_blr);
 }
 
 // arm_call_native: Defensive wrapper for calling native C functions
