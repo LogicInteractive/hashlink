@@ -1,5 +1,13 @@
 # ARM64 JIT Critical Bug: Frame Pointer Corruption
 
+## ✅ STATUS: FIXED (2025-01-19)
+
+**Fix Applied:** Nuclear X29 restoration after ALL function calls (BL/BLR)
+**Commit:** d19fea8 "ARM64 JIT: Add nuclear X29 frame pointer restoration after ALL calls"
+**Verification:** X29 corruption eliminated; crash moved to different (unrelated) argument passing bug
+
+---
+
 ## Problem Summary
 
 **Severity:** CRITICAL - Causes segmentation faults in all HashLink programs on ARM64
@@ -172,3 +180,14 @@ This works because:
 - HashLink JIT architecture: Stack-based virtual register system
 - Prologue generation: `arm_prologue()` at line 7350
 - Epilogue generation: `arm_epilogue()` at line 7401
+
+## Next Bug: Argument Passing to hl_type_get_global()
+
+After fixing X29 corruption, the program now crashes with a DIFFERENT bug:
+- **Location:** `hl_type_get_global()` in libhl.so  
+- **Symptom:** First argument X0=0x1 (invalid pointer)
+- **Root Cause:** JIT code not setting up function arguments correctly
+- **Evidence:** Code loads literal `mov x10, #0x1` but never sets X0 before call
+
+This is a separate JIT code generation bug unrelated to X29 corruption.
+
