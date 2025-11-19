@@ -544,7 +544,12 @@ struct jit_ctx {
 #define BUF_POS()				((int)(ctx->buf.b - ctx->startBuf))
 
 static void jit_buf( jit_ctx *ctx ) {
-	if( BUF_POS() > ctx->bufSize - MAX_OP_SIZE ) {
+#ifdef HL_JIT_ARM64
+	int current_pos = ARM_BUF_POS();
+#else
+	int current_pos = BUF_POS();
+#endif
+	if( current_pos > ctx->bufSize - MAX_OP_SIZE ) {
 		int nsize = ctx->bufSize * 4 / 3;
 		unsigned char *nbuf;
 		int curpos;
@@ -555,7 +560,11 @@ static void jit_buf( jit_ctx *ctx ) {
 			nsize *= 4;
 		}
 		if( nsize < ctx->bufSize + MAX_OP_SIZE * 4 ) nsize = ctx->bufSize + MAX_OP_SIZE * 4;
+#ifdef HL_JIT_ARM64
+		curpos = ARM_BUF_POS();
+#else
 		curpos = BUF_POS();
+#endif
 		nbuf = (unsigned char*)malloc(nsize);
 		if( nbuf == NULL ) {
 			hl_error("Out of memory allocating JIT buffer");
@@ -566,7 +575,11 @@ static void jit_buf( jit_ctx *ctx ) {
 			free(ctx->startBuf);
 		}
 		ctx->startBuf = nbuf;
+#ifdef HL_JIT_ARM64
+		ctx->buf.w = (unsigned int*)(nbuf + curpos);
+#else
 		ctx->buf.b = nbuf + curpos;
+#endif
 		ctx->bufSize = nsize;
 	}
 }
