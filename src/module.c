@@ -675,7 +675,7 @@ int hl_module_init( hl_module *m, h_bool hot_reload ) {
 			int_val buf_pos = hl_jit_buf_pos(ctx);
 			fprintf(stderr, "[F16] BEFORE compilation: buffer pos = %d\n", buf_pos);
 		}
-		int fpos = hl_jit_function(ctx, m, f);
+		int_val fpos = hl_jit_function(ctx, m, f);
 		if( fpos < 0 ) {
 			hl_jit_free(ctx, false);
 			return 0;
@@ -871,7 +871,7 @@ h_bool hl_module_patch( hl_module *m1, hl_code *c ) {
 				changes_count++;
 
 				m1->hash->functions_hashes[i1] = hash2; // update hash
-				int fpos = hl_jit_function(ctx, m2, f2);
+				int_val fpos = hl_jit_function(ctx, m2, f2);
 				if( fpos < 0 ) return false;
 				m2->functions_ptrs[f2->findex] = (void*)(int_val)fpos;
 				has_changes = true;
@@ -880,7 +880,7 @@ h_bool hl_module_patch( hl_module *m1, hl_code *c ) {
 		}
 		if( i1 == m1->code->nfunctions ) {
 			// not found (signature changed or new method) : inject new method!
-			int fpos = hl_jit_function(ctx, m2, f2);
+			int_val fpos = hl_jit_function(ctx, m2, f2);
 			if( fpos < 0 ) return false;
 			m2->hash->functions_hashes[i2] = -1;
 			m2->functions_ptrs[f2->findex] = (void*)(int_val)fpos;

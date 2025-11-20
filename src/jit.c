@@ -3862,7 +3862,7 @@ void *hl_jit_code( jit_ctx *ctx, hl_module *m, int *codesize, hl_debug_infos **d
 #endif
 }
 
-int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
+int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #if !defined(HL_JIT_X86) && !defined(HL_JIT_ARM64)
 	hl_error("JIT compilation only supported on x86/x86-64 and ARM64");
 	return -1;
@@ -3870,7 +3870,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #if defined(HL_JIT_X86) || defined(HL_JIT_ARM64)
 	int i, size = 0, opCount;
 #ifdef HL_JIT_ARM64
-	int codePos = ARM_BUF_POS();
+	int_val codePos = ARM_BUF_POS();
 #else
 	int codePos = BUF_POS();
 #endif
