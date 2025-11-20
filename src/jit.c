@@ -4419,13 +4419,13 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			 * Storing 64 bits is safe - for true 32-bit ints, upper 32 bits are zeros/sign-extended. */ \
 			switch ((vr)->t->kind) { \
 				case HUI8: case HBOOL: _size = 0; break;  /* 8-bit */ \
-			if ((vr)->t->kind == HI32) { \
-				printf("[STORE_VREG] F%d: HI32 from X%d to stackPos=%d size=%d\n", \
-					ctx->f->findex, tmp_reg, _pos, _size); \
-			} \
 				case HUI16: _size = 1; break;              /* 16-bit */ \
 				case HI32: _size = 3; break;               /* 64-bit to preserve pointers! */ \
 				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
+			} \
+			if ((vr)->t->kind == HI32) { \
+				printf("[STORE_VREG] F%d: HI32 from X%d to stackPos=%d size=%d\n", \
+					ctx->f->findex, tmp_reg, _pos, _size); \
 			} \
 			if (_pos >= -255 && _pos <= 0) { \
 				arm_stur_imm(ctx, tmp_reg, X29, _pos, _size); \
@@ -4560,7 +4560,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst) {
 			LOAD_VREG(X10, dst);
 			arm_load_imm64(ctx, X11, 1);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_add_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -4571,7 +4571,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst) {
 			LOAD_VREG(X10, dst);
 			arm_load_imm64(ctx, X11, 1);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_sub_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5061,7 +5061,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJEq:
 		// Jump if ra == rb
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5075,7 +5075,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJNotEq:
 		// Jump if ra != rb
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5090,7 +5090,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		// Jump if ra < rb (signed)
 		if (dst && ra) {
 			// Determine register width: use 64-bit for HI64 and pointers, 32-bit otherwise
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5104,7 +5104,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSGte:
 		// Jump if ra >= rb (signed)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5118,7 +5118,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSGt:
 		// Jump if ra > rb (signed)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5132,7 +5132,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSLte:
 		// Jump if ra <= rb (signed)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5146,7 +5146,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJULt:
 		// Jump if ra < rb (unsigned)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5160,7 +5160,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJUGte:
 		// Jump if ra >= rb (unsigned)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5174,7 +5174,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJNotLt:
 		// Jump if NOT (ra < rb) (same as ra >= rb signed)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5188,7 +5188,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJNotGte:
 		// Jump if NOT (ra >= rb) (same as ra < rb signed)
 		if (dst && ra) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
 			// CMP (32-bit or 64-bit based on type)
@@ -5238,7 +5238,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_sub_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5249,7 +5249,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_mul(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5260,7 +5260,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_sdiv(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5271,7 +5271,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_udiv(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5282,7 +5282,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_and_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5293,7 +5293,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_orr_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5304,7 +5304,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_eor_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5315,7 +5315,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_lsl_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5326,7 +5326,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_asr_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5337,7 +5337,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			arm_lsr_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
@@ -5347,7 +5347,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		case OAdd:
 			// dst = ra + rb
 			if (dst && ra && rb) {
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, ra);
 				LOAD_VREG(X11, rb);
 			arm_add_reg(ctx, X10, X10, X11, is64);
@@ -5577,7 +5577,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X10, ra);  // a
 			LOAD_VREG(X11, rb);  // b
 
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			// X12 = a / b (signed)
 			arm_sdiv(ctx, X12, X10, X11, is64);
 
@@ -5597,7 +5597,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X10, ra);  // a
 			LOAD_VREG(X11, rb);  // b
 
-			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			bool is64 = (dst->t->kind == HI32 || dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			// X12 = a / b (unsigned)
 			arm_udiv(ctx, X12, X10, X11, is64);
 
