@@ -603,6 +603,41 @@ static void _jit_error( jit_ctx *ctx, const char *msg, int line ) {
 	exit(1);
 }
 
+// =====================================================================
+// ARM64 JIT Debug Helpers
+// =====================================================================
+
+#ifdef HL_JIT_ARM64
+
+// Unimplemented operation handler - aborts loudly
+static void hl_jit_unimplemented(int func, int pc, const char *name) {
+	fprintf(stderr,
+		"[ARM64 JIT] UNIMPLEMENTED OP EXECUTED: %s at func=%d pc=%d\n",
+		name, func, pc);
+	abort();
+}
+
+// Step counter for finding infinite loops
+static long long hl_jit_steps = 0;
+
+static void hl_jit_step_hit(int func, int pc) {
+	hl_jit_steps++;
+
+	// Only check every 10000 steps to reduce overhead
+	if ((hl_jit_steps % 10000) == 0) {
+		fprintf(stderr, "[STEP] steps=%lld last func=%d pc=%d\n", hl_jit_steps, func, pc);
+
+		if (hl_jit_steps > 1000000) {
+			fprintf(stderr,
+				"[STEP-LIMIT] func=%d pc=%d steps=%lld\n",
+				func, pc, hl_jit_steps);
+			abort();
+		}
+	}
+}
+
+#endif  // HL_JIT_ARM64
+
 #ifndef HL_64
 #	ifdef HL_DEBUG
 #		define error_i64() jit_error("i64-32")
@@ -642,6 +677,8 @@ static void register_jump( jit_ctx *ctx, int pos, int target ) {
 	if (target < 0 || target > ctx->f->nops) {
 		// Invalid jump target - skip registration
 		// This should not happen with correct bytecode interpretation
+		fprintf(stderr, "[REGISTER_JUMP] F%d: SKIPPED invalid target - pos=%d, target=%d, f->nops=%d\n",
+			ctx->f->findex, pos, target, ctx->f->nops);
 		return;
 	}
 	jlist *j = (jlist*)hl_malloc(&ctx->falloc, sizeof(jlist));
@@ -649,6 +686,8 @@ static void register_jump( jit_ctx *ctx, int pos, int target ) {
 	j->target = target;
 	j->next = ctx->jumps;
 	ctx->jumps = j;
+	fprintf(stderr, "[REGISTER_JUMP] F%d: Registered jump at pos=%d, target_op=%d\n",
+		ctx->f->findex, pos, target);
 	if( target > 0 && target < ctx->f->nops && ctx->opsPos[target] == 0 )
 		ctx->opsPos[target] = -1;
 }
@@ -4002,6 +4041,19 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		jit_buf(ctx);
 #ifdef HL_JIT_ARM64
 		ctx->opsPos[opCount + 1] = ARM_BUF_POS();
+
+		// Step tracer disabled for debugging SIGSEGV
+		// TODO: Re-enable after fixing crash
+		/*
+		// X0 = function index
+		arm_load_imm64(ctx, X0, f->findex);
+		// X1 = HL pc
+		arm_load_imm64(ctx, X1, opCount);
+		// X8 = &hl_jit_step_hit
+		arm_load_imm64(ctx, X8, (uint64_t)&hl_jit_step_hit);
+		// Call helper (AAPCS: clobbers x0–x7, x9–x15)
+		arm_blr(ctx, X8);
+		*/
 #else
 		ctx->opsPos[opCount + 1] = BUF_POS();
 #endif
@@ -4288,24 +4340,38 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	#define LOAD_VREG(tmp_reg, vr) \
 		if (vr) { \
 			int _pos = (vr)->stackPos; \
+			int _size; \
+			switch ((vr)->t->kind) { \
+				case HUI8: case HBOOL: _size = 0; break;  /* 8-bit, zero-extends */ \
+				case HUI16: _size = 1; break;              /* 16-bit, zero-extends */ \
+				case HI32: _size = 2; break;               /* 32-bit, zero-extends */ \
+				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
+			} \
 			if (_pos >= -255 && _pos <= 0) { \
-				arm_ldur_imm(ctx, tmp_reg, X29, _pos, 3); \
+				arm_ldur_imm(ctx, tmp_reg, X29, _pos, _size); \
 			} else { \
 				arm_load_imm64(ctx, X9, _pos); \
 				arm_add_reg(ctx, X9, X29, X9, true); \
-				arm_ldr_imm(ctx, tmp_reg, X9, 0, 3); \
+				arm_ldr_imm(ctx, tmp_reg, X9, 0, _size); \
 			} \
 		}
-	
+
 	#define STORE_VREG(tmp_reg, vr) \
 		if (vr) { \
 			int _pos = (vr)->stackPos; \
+			int _size; \
+			switch ((vr)->t->kind) { \
+				case HUI8: case HBOOL: _size = 0; break;  /* 8-bit */ \
+				case HUI16: _size = 1; break;              /* 16-bit */ \
+				case HI32: _size = 2; break;               /* 32-bit */ \
+				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
+			} \
 			if (_pos >= -255 && _pos <= 0) { \
-				arm_stur_imm(ctx, tmp_reg, X29, _pos, 3); \
+				arm_stur_imm(ctx, tmp_reg, X29, _pos, _size); \
 			} else { \
 				arm_load_imm64(ctx, X9, _pos); \
 				arm_add_reg(ctx, X9, X29, X9, true); \
-				arm_str_imm(ctx, tmp_reg, X9, 0, 3); \
+				arm_str_imm(ctx, tmp_reg, X9, 0, _size); \
 			} \
 		}
 	
@@ -4433,7 +4499,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst) {
 			LOAD_VREG(X10, dst);
 			arm_load_imm64(ctx, X11, 1);
-			arm_add_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_add_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -4443,7 +4510,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst) {
 			LOAD_VREG(X10, dst);
 			arm_load_imm64(ctx, X11, 1);
-			arm_sub_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_sub_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -4576,17 +4644,30 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Eagerly JIT the callee if not compiled yet
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
-					// printf("[OCall0] Eagerly JITing function %d\n", o->p2);
+					// CRITICAL: Save ctx state before recursive compilation
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
+					int *saved_opsPos = ctx->opsPos;
+					int saved_maxOps = ctx->maxOps;
+					jlist *saved_jumps = ctx->jumps;
+
+					// Reset for recursive function
+					ctx->opsPos = NULL;
+					ctx->maxOps = 0;
+					ctx->jumps = NULL;
+
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					if (target_f->findex == 16) {
-						fprintf(stderr, "[RECURSIVE] OCall0: F%d triggering F16 compilation at buffer pos %d\n",
-							ctx->f->findex, ARM_BUF_POS());
-					}
 					hl_jit_function(ctx, ctx->m, target_f);
+
+					// Free recursive function's opsPos
+					free(ctx->opsPos);
+
+					// Restore parent function's ctx state
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
+					ctx->opsPos = saved_opsPos;
+					ctx->maxOps = saved_maxOps;
+					ctx->jumps = saved_jumps;
 				}
 
 				// Get target offset (now guaranteed to be non-NULL)
@@ -4638,16 +4719,30 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					// CRITICAL: Save ctx state before recursive compilation
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
+					int *saved_opsPos = ctx->opsPos;
+					int saved_maxOps = ctx->maxOps;
+					jlist *saved_jumps = ctx->jumps;
+
+					// Reset for recursive function
+					ctx->opsPos = NULL;
+					ctx->maxOps = 0;
+					ctx->jumps = NULL;
+
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
-					if (target_f->findex == 16) {
-						fprintf(stderr, "[RECURSIVE] OCall1: F%d triggering F16 compilation at buffer pos %d\n",
-							ctx->f->findex, ARM_BUF_POS());
-					}
 					hl_jit_function(ctx, ctx->m, target_f);
+
+					// Free recursive function's opsPos
+					free(ctx->opsPos);
+
+					// Restore parent function's ctx state
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
+					ctx->opsPos = saved_opsPos;
+					ctx->maxOps = saved_maxOps;
+					ctx->jumps = saved_jumps;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -4691,26 +4786,46 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			} else {
 				// JIT function - EAGER JIT + direct BL
 				if (ctx->m->functions_ptrs[o->p2] == NULL) {
+					// CRITICAL: Save ctx state before recursive compilation
 					hl_function *saved_f = ctx->f;
 					int saved_currentPos = ctx->currentPos;
+					int *saved_opsPos = ctx->opsPos;
+					int saved_maxOps = ctx->maxOps;
+					jlist *saved_jumps = ctx->jumps;
+
 					hl_function *target_f = ctx->m->code->functions + ctx->m->functions_indexes[o->p2];
 					if (target_f->findex == 16) {
 						int buf_before = ARM_BUF_POS();
 						fprintf(stderr, "[RECURSIVE] OCall2: F%d (at pos %d) triggering F16 compilation\n",
 							ctx->f->findex, buf_before);
-						fprintf(stderr, "[RECURSIVE]   ctx->currentPos = %d, saved_currentPos = %d\n",
-							ctx->currentPos, saved_currentPos);
+						fprintf(stderr, "[RECURSIVE]   Saving: currentPos=%d, opsPos=%p, maxOps=%d, jumps=%p\n",
+							ctx->currentPos, saved_opsPos, saved_maxOps, saved_jumps);
 					}
+
+					// Reset opsPos and jumps for recursive function
+					ctx->opsPos = NULL;
+					ctx->maxOps = 0;
+					ctx->jumps = NULL;
+
 					hl_jit_function(ctx, ctx->m, target_f);
+
 					if (target_f->findex == 16) {
 						int buf_after = ARM_BUF_POS();
 						fprintf(stderr, "[RECURSIVE] OCall2: F16 compiled, buffer pos now %d, returning to F%d\n",
 							buf_after, saved_f->findex);
-						fprintf(stderr, "[RECURSIVE]   ctx->currentPos = %d, restoring to %d\n",
-							ctx->currentPos, saved_currentPos);
+						fprintf(stderr, "[RECURSIVE]   Restoring: currentPos=%d, opsPos=%p, maxOps=%d, jumps=%p\n",
+							saved_currentPos, saved_opsPos, saved_maxOps, saved_jumps);
 					}
+
+					// Free recursive function's opsPos
+					free(ctx->opsPos);
+
+					// CRITICAL: Restore parent function's ctx state
 					ctx->f = saved_f;
 					ctx->currentPos = saved_currentPos;
+					ctx->opsPos = saved_opsPos;
+					ctx->maxOps = saved_maxOps;
+					ctx->jumps = saved_jumps;
 				}
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
@@ -4885,10 +5000,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJEq:
 		// Jump if ra == rb
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11 (implemented as SUBS XZR, X10, X11)
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.EQ target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_EQ);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4898,10 +5014,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJNotEq:
 		// Jump if ra != rb
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.NE target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_NE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4911,10 +5028,12 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSLt:
 		// Jump if ra < rb (signed)
 		if (dst && ra) {
+			// Determine register width: use 64-bit for HI64 and pointers, 32-bit otherwise
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.LT target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_LT);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4924,10 +5043,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSGte:
 		// Jump if ra >= rb (signed)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.GE target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_GE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4937,10 +5057,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSGt:
 		// Jump if ra > rb (signed)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.GT target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_GT);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4950,10 +5071,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJSLte:
 		// Jump if ra <= rb (signed)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.LE target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_LE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4963,10 +5085,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJULt:
 		// Jump if ra < rb (unsigned)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.LO target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_LO);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4976,10 +5099,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJUGte:
 		// Jump if ra >= rb (unsigned)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.HS target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_HS);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -4989,10 +5113,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJNotLt:
 		// Jump if NOT (ra < rb) (same as ra >= rb signed)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.GE target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_GE);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -5002,10 +5127,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OJNotGte:
 		// Jump if NOT (ra >= rb) (same as ra < rb signed)
 		if (dst && ra) {
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			LOAD_VREG(X10, dst);
 			LOAD_VREG(X11, ra);
-			// CMP X10, X11
-			arm_subs_reg(ctx, XZR, X10, X11, true);
+			// CMP (32-bit or 64-bit based on type)
+			arm_subs_reg(ctx, XZR, X10, X11, is64);
 			// B.LT target
 			int jump = arm_do_jump_cond(ctx, ARM64_COND_LT);
 			register_jump(ctx, jump, (opCount + 1) + o->p3);
@@ -5051,7 +5177,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_sub_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_sub_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5061,7 +5188,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_mul(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_mul(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5071,7 +5199,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_sdiv(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_sdiv(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5081,7 +5210,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_udiv(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_udiv(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5091,7 +5221,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_and_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_and_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5101,7 +5232,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_orr_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_orr_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5111,7 +5243,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_eor_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_eor_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5121,7 +5254,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_lsl_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_lsl_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5131,7 +5265,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_asr_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_asr_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5141,7 +5276,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (dst && ra && rb) {
 			LOAD_VREG(X10, ra);
 			LOAD_VREG(X11, rb);
-			arm_lsr_reg(ctx, X10, X10, X11, true);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			arm_lsr_reg(ctx, X10, X10, X11, is64);
 			STORE_VREG(X10, dst);
 		}
 		break;
@@ -5150,9 +5286,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		case OAdd:
 			// dst = ra + rb
 			if (dst && ra && rb) {
-				LOAD_VREG(X10, ra);
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
+			LOAD_VREG(X10, ra);
 				LOAD_VREG(X11, rb);
-				arm_add_reg(ctx, X10, X10, X11, true);
+			arm_add_reg(ctx, X10, X10, X11, is64);
 				STORE_VREG(X10, dst);
 			}
 		break;
@@ -5379,14 +5516,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X10, ra);  // a
 			LOAD_VREG(X11, rb);  // b
 
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			// X12 = a / b (signed)
-			arm_sdiv(ctx, X12, X10, X11, true);
+			arm_sdiv(ctx, X12, X10, X11, is64);
 
 			// X12 = (a / b) * b
-			arm_mul(ctx, X12, X12, X11, true);
+			arm_mul(ctx, X12, X12, X11, is64);
 
 			// X10 = a - (a / b) * b
-			arm_sub_reg(ctx, X10, X10, X12, true);
+			arm_sub_reg(ctx, X10, X10, X12, is64);
 
 			STORE_VREG(X10, dst);
 		}
@@ -5398,14 +5536,15 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X10, ra);  // a
 			LOAD_VREG(X11, rb);  // b
 
+			bool is64 = (dst->t->kind == HI64 || dst->t->kind >= HOBJ);
 			// X12 = a / b (unsigned)
-			arm_udiv(ctx, X12, X10, X11, true);
+			arm_udiv(ctx, X12, X10, X11, is64);
 
 			// X12 = (a / b) * b
-			arm_mul(ctx, X12, X12, X11, true);
+			arm_mul(ctx, X12, X12, X11, is64);
 
 			// X10 = a - (a / b) * b
-			arm_sub_reg(ctx, X10, X10, X12, true);
+			arm_sub_reg(ctx, X10, X10, X12, is64);
 
 			STORE_VREG(X10, dst);
 		}
@@ -6440,9 +6579,21 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 #ifdef HL_JIT_ARM64
 	// Patch jumps (conditional branches, etc.) - must be done per-function before ctx->jumps is cleared
+	// DEBUG: Count jumps to patch
+	int jump_count = 0;
+	jlist *jcount = ctx->jumps;
+	while (jcount) {
+		jump_count++;
+		jcount = jcount->next;
+	}
+	fprintf(stderr, "[PATCH_LOOP] F%d: Starting jump patching, found %d jumps to patch\n",
+		f->findex, jump_count);
+
 	jlist *j = ctx->jumps;
 	while( j ) {
 		int target_pos = ctx->opsPos[j->target];
+		fprintf(stderr, "[PATCH_LOOP] F%d: Patching jump at pos=%d, target_op=%d, target_pos=%d\n",
+			f->findex, j->pos, j->target, target_pos);
 		if( target_pos <= 0 && j->target != 0 ) {
 			printf("ERROR: Invalid jump - pos=0x%x, target=%d, target_pos=%d, nops=%d\n",
 			       j->pos, j->target, target_pos, f->nops);
@@ -6453,6 +6604,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		arm_patch_jump_to(ctx, j->pos, target_pos);
 		j = j->next;
 	}
+	fprintf(stderr, "[PATCH_LOOP] F%d: Finished patching %d jumps\n", f->findex, jump_count);
 	// Clear the jump list after patching (prevents stale jumps in next function)
 	ctx->jumps = NULL;
 #endif
@@ -7449,32 +7601,47 @@ static void arm_patch_branch(jit_ctx *ctx, int jump_pos, int target_pos) {
 
 
 	unsigned int opcode = (*instr >> 24) & 0xFF;
+	unsigned int old_insn = *instr;
 
 	// Check instruction type and patch accordingly
 	if ((opcode & 0xFC) == 0x14) {
 		// B or BL (26-bit offset)
 		if (!arm_fits_signed(offset >> 2, 26)) {
+			fprintf(stderr, "[PATCH ERROR] B/BL offset too large: jump=%d target=%d offset=%d\n",
+			        jump_pos, target_pos, offset);
 			ASSERT(14);
 			return;
 		}
 		unsigned int imm26 = (offset >> 2) & 0x3FFFFFF;
 		*instr = (*instr & 0xFC000000) | imm26;
+		fprintf(stderr, "[PATCH] B/BL: jump=%d target=%d offset=%d imm=%d (0x%08X -> 0x%08X)\n",
+		        jump_pos, target_pos, offset, imm26, old_insn, *instr);
 	} else if (opcode == 0x54) {
 		// B.cond (19-bit offset)
 		if (!arm_fits_signed(offset >> 2, 19)) {
+			fprintf(stderr, "[PATCH ERROR] B.cond offset too large: jump=%d target=%d offset=%d\n",
+			        jump_pos, target_pos, offset);
 			ASSERT(15);
 			return;
 		}
 		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
 		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
+		fprintf(stderr, "[PATCH] B.cond: jump=%d target=%d offset=%d imm=%d (0x%08X -> 0x%08X)\n",
+		        jump_pos, target_pos, offset, imm19, old_insn, *instr);
 	} else if ((opcode & 0x7E) == 0x34) {
 		// CBZ/CBNZ (19-bit offset) - mask sf bit to handle both 32-bit (0x34/0x35) and 64-bit (0xB4/0xB5)
 		if (!arm_fits_signed(offset >> 2, 19)) {
+			fprintf(stderr, "[PATCH ERROR] CBZ/CBNZ offset too large: jump=%d target=%d offset=%d\n",
+			        jump_pos, target_pos, offset);
 			ASSERT(16);
 			return;
 		}
 		unsigned int imm19 = (offset >> 2) & 0x7FFFF;
 		*instr = (*instr & 0xFF00001F) | (imm19 << 5);
+		fprintf(stderr, "[PATCH] CBZ/CBNZ: jump=%d target=%d offset=%d imm=%d (0x%08X -> 0x%08X)\n",
+		        jump_pos, target_pos, offset, imm19, old_insn, *instr);
+	} else {
+		fprintf(stderr, "[PATCH ERROR] Unknown branch opcode: 0x%02X at pos=%d\n", opcode, jump_pos);
 	}
 }
 
@@ -7494,7 +7661,10 @@ static int arm_do_jump_cond(jit_ctx *ctx, Arm64Condition cond) {
 
 // Helper: Perform CBZ (compare and branch if zero) and return position for patching
 static int arm_do_cbz(jit_ctx *ctx, Arm64Reg rt, bool is64) {
-	return arm_cbz(ctx, rt, 0, is64);  // Forward branch with offset=0 (to be patched)
+	int pos = arm_cbz(ctx, rt, 0, is64);  // Forward branch with offset=0 (to be patched)
+	fprintf(stderr, "[CBZ_EMIT] F%d: Emitted CBZ at pos=%d, reg=%d, is64=%d\n",
+		ctx->f->findex, pos, rt, is64);
+	return pos;
 }
 
 // Helper: Perform CBNZ (compare and branch if non-zero) and return position for patching
