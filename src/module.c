@@ -600,7 +600,12 @@ static void hl_module_init_constant( hl_module *m, hl_constant *c ) {
 			case HI32:
 				// CRITICAL FIX: Use 64-bit storage for HI32 to preserve pointers
 				// Some HI32 values are mistyped pointers in the type system
-				*(int_val*)addr = (int_val)m->code->ints[idx];
+				// Cast to unsigned first to zero-extend, not sign-extend!
+#ifdef HL_64
+				*(int_val*)addr = (int_val)(unsigned int)m->code->ints[idx];
+#else
+				*(int*)addr = m->code->ints[idx];
+#endif
 				break;
 			case HBOOL:
 				*(bool*)addr = idx != 0;

@@ -4510,7 +4510,8 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OInt:
 		// dst = integer constant
 		if (dst) {
-			arm_load_imm64(ctx, X10, m->code->ints[o->p2]);
+			// CRITICAL: Cast to unsigned to zero-extend for HI32 pointers
+			arm_load_imm64(ctx, X10, (unsigned int)m->code->ints[o->p2]);
 			STORE_VREG(X10, dst);
 		}
 		break;

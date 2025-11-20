@@ -203,6 +203,9 @@ ifneq ($(ARCH),arm64)
 CFLAGS += -m$(MARCH)
 MARCH_FLAG = -m$(MARCH)
 endif
+else
+# ARM64 detected - enable ARM64 JIT
+CFLAGS += -DHL_JIT_ARM64
 endif
 CFLAGS += -fPIC -pthread -fno-omit-frame-pointer $(shell pkg-config --cflags sdl2)
 LFLAGS += -lm -Wl,-rpath,.:'$$ORIGIN':$(INSTALL_LIB_DIR) -Wl,--export-dynamic -Wl,--no-undefined
