@@ -672,7 +672,7 @@ int hl_module_init( hl_module *m, h_bool hot_reload ) {
 		hl_function *f = m->code->functions + i;
 		// DEBUG: Track Function 16 boundaries
 		if (f->findex == 16) {
-			int buf_pos = hl_jit_buf_pos(ctx);
+			int_val buf_pos = hl_jit_buf_pos(ctx);
 			fprintf(stderr, "[F16] BEFORE compilation: buffer pos = %d\n", buf_pos);
 		}
 		int fpos = hl_jit_function(ctx, m, f);
@@ -682,7 +682,7 @@ int hl_module_init( hl_module *m, h_bool hot_reload ) {
 		}
 		// DEBUG: Track Function 16 boundaries
 		if (f->findex == 16) {
-			int end_pos = hl_jit_buf_pos(ctx);
+			int_val end_pos = hl_jit_buf_pos(ctx);
 			fprintf(stderr, "[F16] AFTER compilation: fpos=%d, end_pos=%d, size=%d bytes\n",
 				fpos, end_pos, end_pos - fpos);
 		}

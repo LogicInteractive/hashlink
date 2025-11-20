@@ -1,0 +1,13 @@
+--- src/jit.c
++++ src/jit.c
+@@ -4386,6 +4386,10 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
+ 				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
+ 			} \
+ 		} \
++		if ((vr)->t->kind == HI32 && is_arg_reg) { \
++			printf("[LOAD_VREG] F%d: HI32 -> X%d from stackPos=%d size=%d\n", \
++				ctx->f->findex, tmp_reg, _pos, _size); \
++		} \
+ 		if (_pos >= -255 && _pos <= 0) { \
+ 			arm_ldur_imm(ctx, tmp_reg, X29, _pos, _size); \
+ 		} else { \
