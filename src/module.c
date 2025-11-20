@@ -597,6 +597,16 @@ static void hl_module_init_constant( hl_module *m, hl_constant *c ) {
 			hl_type *ft = t->obj->fields[i].t;
 			void *addr = (char*)v + rt->fields_indexes[i];
 			switch (ft->kind) {
+			case HI32:
+				// CRITICAL FIX: Use 64-bit storage for HI32 to preserve pointers
+				// Some HI32 values are mistyped pointers in the type system
+				// Cast to unsigned first to zero-extend, not sign-extend!
+#ifdef HL_64
+				*(int_val*)addr = (int_val)(unsigned int)m->code->ints[idx];
+#else
+				*(int*)addr = m->code->ints[idx];
+#endif
+				break;
 			case HBOOL:
 				*(bool*)addr = idx != 0;
 				break;
@@ -609,15 +619,7 @@ static void hl_module_init_constant( hl_module *m, hl_constant *c ) {
 			case HTYPE:
 				*(hl_type**)addr = m->code->types + idx;
 				break;
-			// CRITICAL: HI32 falls through to default case on HL_64!
-			// HI32 fields can contain mistyped pointers that need globals lookup
-#ifndef HL_64
-			case HI32:
-				*(int*)addr = m->code->ints[idx];
-				break;
-#endif
 			default:
-				// On HL_64, HI32 uses this path to get proper pointer values from globals_data
 				*(void**)addr = *(void**)(m->globals_data + m->globals_indexes[idx]);
 				break;
 			}
