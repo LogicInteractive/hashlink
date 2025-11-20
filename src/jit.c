@@ -3461,6 +3461,7 @@ typedef struct {
 	double  fargs[8];   // 64 bytes: V0-V7 float/double arguments (stored as doubles)
 } hl_vargs;
 
+#if defined(__aarch64__) || defined(__ARM_ARCH_8__)
 // ARM64 low-level trampoline: loads args from hl_vargs and calls closure
 // This is the actual assembly code that sets up registers and calls the function
 static void* jit_c2hl_arm64_trampoline(void* closure, hl_vargs* vargs) {
@@ -3614,6 +3615,31 @@ void hl_jit_init_arm64( jit_ctx *ctx ) {
 	ctx->static_functions[1] = (void*)(int_val)jit_build_arm64(ctx,jit_assert_arm64);
 	ctx->static_functions[2] = (void*)(int_val)jit_build_arm64(ctx,jit_null_field_access_arm64);
 }
+#else // !(__aarch64__ || __ARM_ARCH_8__)
+// Stub implementations for non-ARM64 architectures
+// These allow cross-compilation but will not be functional
+static void* jit_c2hl_arm64_trampoline(void* closure, void* vargs) {
+	hl_error("ARM64 JIT trampolines cannot run on non-ARM64 architecture");
+	return NULL;
+}
+static void *callback_c2hl_arm64( void *_f, hl_type *t, void **args, vdynamic *ret ) {
+	hl_error("ARM64 JIT trampolines cannot run on non-ARM64 architecture");
+	return NULL;
+}
+static void* jit_hl2c_arm64(vclosure* c, void** args, int nargs, bool ret_void) {
+	hl_error("ARM64 JIT trampolines cannot run on non-ARM64 architecture");
+	return NULL;
+}
+static void *get_wrapper_arm64( hl_type *t ) {
+	return (void*)jit_hl2c_arm64;
+}
+void hl_jit_init_arm64( jit_ctx *ctx ) {
+	// Build error handlers using JIT code generator (which works cross-platform)
+	ctx->static_functions[0] = (void*)(int_val)jit_build_arm64(ctx,jit_null_access_arm64);
+	ctx->static_functions[1] = (void*)(int_val)jit_build_arm64(ctx,jit_assert_arm64);
+	ctx->static_functions[2] = (void*)(int_val)jit_build_arm64(ctx,jit_null_field_access_arm64);
+}
+#endif // __aarch64__ || __ARM_ARCH_8__
 
 // ARM64 method patching
 // Patches an old method to redirect to a new method table
@@ -5581,6 +5607,30 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		}
 		break;
 
+	case ORefData:
+		// dst = data_ptr_from_ref(ra)
+		// Gets the data pointer from a reference
+		// Implementation: dereference and add offset to data field
+		if (dst && ra) {
+			LOAD_VREG(X10, ra);  // Load reference pointer
+			// Reference structure: [type_ptr, data...]
+			// Data starts at offset 8 (after 64-bit type pointer)
+			arm_add_imm(ctx, X10, X10, 8, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
+
+	case ORefOffset:
+		// dst = ref_with_offset(ra, rb)
+		// Creates a reference with an offset
+		// Implementation: add offset to pointer
+		if (dst && ra && rb) {
+			LOAD_VREG(X10, ra);  // Load base pointer
+			LOAD_VREG(X11, rb);  // Load offset
+			arm_add_reg(ctx, X10, X10, X11, true);
+			STORE_VREG(X10, dst);
+		}
+		break;
 
 
 
@@ -6570,7 +6620,8 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	case OAssert:
 	case OAsm:
 	case OCatch:
-		// Special operations
+	case ONop:
+		// Special operations and no-ops
 		break;
 
 		default:

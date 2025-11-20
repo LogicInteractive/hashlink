@@ -315,7 +315,7 @@ int main(int argc, pchar *argv[]) {
 	hl_code_free(ctx.code);
 	setup_handler();
 	hl_profile_setup(profile_count);
-#ifdef HL_JIT_ARM64
+#if defined(HL_JIT_ARM64) && (defined(__aarch64__) || defined(__ARM_ARCH_8__))
 	// ARM64: Call entry point directly with proper BLR to set up LR correctly
 	typedef void (*hl_main_t)(void*);
 	hl_main_t main_func = (hl_main_t)cl.fun;
