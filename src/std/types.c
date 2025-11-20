@@ -45,7 +45,11 @@ static int T_SIZES[] = {
 	0, // VOID
 	1, // I8
 	2, // I16
+#if defined(HL_64) && defined(HL_JIT_ARM64)
+	8, // I32 - CRITICAL: 8 bytes on ARM64 to preserve pointers mistyped as HI32
+#else
 	4, // I32
+#endif
 	8, // I64
 	4, // F32
 	8, // F64
@@ -85,7 +89,11 @@ HL_PRIM int hl_pad_struct( int size, hl_type *t ) {
 		GET_ALIGN(unsigned short);
 		break;
 	case HI32:
+#if defined(HL_64) && defined(HL_JIT_ARM64)
+		GET_ALIGN(int64);  // 8-byte alignment on ARM64
+#else
 		GET_ALIGN(unsigned int);
+#endif
 		break;
 	case HI64:
 	case HGUID:

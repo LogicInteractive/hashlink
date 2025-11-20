@@ -598,7 +598,9 @@ static void hl_module_init_constant( hl_module *m, hl_constant *c ) {
 			void *addr = (char*)v + rt->fields_indexes[i];
 			switch (ft->kind) {
 			case HI32:
-				*(int*)addr = m->code->ints[idx];
+				// CRITICAL FIX: Use 64-bit storage for HI32 to preserve pointers
+				// Some HI32 values are mistyped pointers in the type system
+				*(int_val*)addr = (int_val)m->code->ints[idx];
 				break;
 			case HBOOL:
 				*(bool*)addr = idx != 0;
@@ -621,6 +623,8 @@ static void hl_module_init_constant( hl_module *m, hl_constant *c ) {
 	default:
 		hl_fatal("assert");
 	}
+	fprintf(stderr, "[INIT_CONSTANT] Setting global %d at addr %p to object %p\n",
+		c->global, (void*)global, (void*)v);
 	*global = v;
 	hl_remove_root(global);
 }

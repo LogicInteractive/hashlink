@@ -4016,12 +4016,6 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	op_enter(ctx);
 #elif defined(HL_JIT_ARM64)
 	// ARM64: totalRegsSize is space for locals; we need +16 for saved FP/LR
-	printf("[JIT] Function %d (%s) at offset 0x%x, framesize=%d\n",
-	       f->findex,
-	       hl_to_utf8(f->obj ? f->obj->name : USTR("???")),
-	       ARM_BUF_POS(),
-	       ctx->totalRegsSize + 16);
-
 	arm_prologue(ctx, ctx->totalRegsSize + 16);
 #endif
 #	ifdef HL_64
@@ -4397,10 +4391,6 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
 				} \
 			} \
-			if ((vr)->t->kind == HI32 && is_arg_reg) { \
-				printf("[LOAD_VREG] F%d: HI32 -> X%d from stackPos=%d size=%d\n", \
-					ctx->f->findex, tmp_reg, _pos, _size); \
-			} \
 			if (_pos >= -255 && _pos <= 0) { \
 				arm_ldur_imm(ctx, tmp_reg, X29, _pos, _size); \
 			} else { \
@@ -4422,10 +4412,6 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				case HUI16: _size = 1; break;              /* 16-bit */ \
 				case HI32: _size = 3; break;               /* 64-bit to preserve pointers! */ \
 				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
-			} \
-			if ((vr)->t->kind == HI32) { \
-				printf("[STORE_VREG] F%d: HI32 from X%d to stackPos=%d size=%d\n", \
-					ctx->f->findex, tmp_reg, _pos, _size); \
 			} \
 			if (_pos >= -255 && _pos <= 0) { \
 				arm_stur_imm(ctx, tmp_reg, X29, _pos, _size); \
@@ -5220,6 +5206,9 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			hl_module *m = ctx->m;
 			void *addr = m->globals_data + m->globals_indexes[o->p1];
 			if (ra) {
+				// DEBUG: Track writes to globals
+				fprintf(stderr, "[OSETGLOBAL] F%d: Writing to global %d at addr %p, ra type=%d\n",
+					ctx->f->findex, o->p1, addr, ra->t->kind);
 				// Load value from source
 				LOAD_VREG(X10, ra);
 				// Load global address into X11
