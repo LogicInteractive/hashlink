@@ -4371,11 +4371,20 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (vr) { \
 			int _pos = (vr)->stackPos; \
 			int _size; \
-			switch ((vr)->t->kind) { \
-				case HUI8: case HBOOL: _size = 0; break;  /* 8-bit, zero-extends */ \
-				case HUI16: _size = 1; break;              /* 16-bit, zero-extends */ \
-				case HI32: _size = 2; break;               /* 32-bit, zero-extends */ \
-				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
+			/* CRITICAL FIX: Some pointer values are mistyped as HI32 in the type system. \
+			 * When loading into X0-X7 (function argument registers), ALWAYS use 64-bit loads \
+			 * to prevent pointer truncation (0x7ffff5c433ed -> 0xf5c433ed). \
+			 * This is safe because ARM64 LDUR/LDR zero-extends, and callee will use correct width. */ \
+			bool is_arg_reg = (tmp_reg >= X0 && tmp_reg <= X7); \
+			if (is_arg_reg) { \
+				_size = 3;  /* Force 64-bit load for all function arguments */ \
+			} else { \
+				switch ((vr)->t->kind) { \
+					case HUI8: case HBOOL: _size = 0; break;  /* 8-bit, zero-extends */ \
+					case HUI16: _size = 1; break;              /* 16-bit, zero-extends */ \
+					case HI32: _size = 3; break;               /* 64-bit to match stores! */ \
+					default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
+				} \
 			} \
 			if (_pos >= -255 && _pos <= 0) { \
 				arm_ldur_imm(ctx, tmp_reg, X29, _pos, _size); \
@@ -4390,10 +4399,13 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		if (vr) { \
 			int _pos = (vr)->stackPos; \
 			int _size; \
+			/* CRITICAL FIX: Always use 64-bit stores for HI32 to prevent pointer truncation. \
+			 * Some HI32 values are actually pointers mistyped in the type system. \
+			 * Storing 64 bits is safe - for true 32-bit ints, upper 32 bits are zeros/sign-extended. */ \
 			switch ((vr)->t->kind) { \
 				case HUI8: case HBOOL: _size = 0; break;  /* 8-bit */ \
 				case HUI16: _size = 1; break;              /* 16-bit */ \
-				case HI32: _size = 2; break;               /* 32-bit */ \
+				case HI32: _size = 3; break;               /* 64-bit to preserve pointers! */ \
 				default: _size = 3; break;                 /* 64-bit for HI64, pointers */ \
 			} \
 			if (_pos >= -255 && _pos <= 0) { \
