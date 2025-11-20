@@ -3843,7 +3843,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #endif
 #if defined(HL_JIT_X86) || defined(HL_JIT_ARM64)
 	int i, size = 0, opCount;
+#ifdef HL_JIT_ARM64
+	int codePos = ARM_BUF_POS();
+#else
 	int codePos = BUF_POS();
+#endif
 	int nargs = f->type->fun->nargs;
 	unsigned short *debug16 = NULL;
 	int *debug32 = NULL;
@@ -4673,7 +4677,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 				// Get target offset (now guaranteed to be non-NULL)
 				// NOTE: functions_ptrs stores OFFSETS from ctx->startBuf, not absolute addresses!
 				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
+				int_val call_site_offset = ARM_BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
 				// printf("[OCall0] Direct BL: target_offset=0x%lx, call_site_offset=0x%x, delta=%ld\n",
@@ -4747,7 +4751,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
 				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
+				int_val call_site_offset = ARM_BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
 				if (delta >= -134217728LL && delta < 134217728LL) {
@@ -4830,7 +4834,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
 				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
+				int_val call_site_offset = ARM_BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
 				if (delta >= -134217728LL && delta < 134217728LL) {
@@ -4885,7 +4889,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
 				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
+				int_val call_site_offset = ARM_BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
 				if (delta >= -134217728LL && delta < 134217728LL) {
@@ -4942,7 +4946,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
 				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
+				int_val call_site_offset = ARM_BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
 				if (delta >= -134217728LL && delta < 134217728LL) {
@@ -5625,7 +5629,7 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 				// Get target offset (functions_ptrs stores OFFSETS, not addresses!)
 				int_val target_offset = (int_val)ctx->m->functions_ptrs[o->p2];
-				int_val call_site_offset = BUF_POS();
+				int_val call_site_offset = ARM_BUF_POS();
 				int_val delta = target_offset - call_site_offset;
 
 				if (delta >= -134217728LL && delta < 134217728LL) {
