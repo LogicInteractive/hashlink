@@ -326,7 +326,15 @@ typedef enum {
 } Arm64Condition;
 
 // ARM64 buffer writing macro (instructions are 32-bit)
-#define B32(val)	*ctx->buf.w++ = (unsigned int)(val)
+// SAFETY: Bounds check to catch buffer overflows immediately
+#define B32(val) do { \
+	if ((unsigned char*)ctx->buf.w >= ctx->startBuf + ctx->bufSize) { \
+		fprintf(stderr, "[CRITICAL] BUFFER OVERFLOW at pos %d (w=%p, limit=%p)\n", \
+		        ARM_BUF_POS(), ctx->buf.w, ctx->startBuf + ctx->bufSize); \
+		ASSERT(99); \
+	} \
+	*ctx->buf.w++ = (unsigned int)(val); \
+} while(0)
 
 // ARM64 buffer position
 #define ARM_BUF_POS()	((int)((unsigned char*)ctx->buf.w - ctx->startBuf))
@@ -3871,6 +3879,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		size += r->size;
 		size += hl_pad_size(size,r->t);
 		r->stackPos = -size;
+		// DEBUG: Log vreg allocation for Function #16 (where crash occurs)
+		if (f->findex == 16) {
+			fprintf(stderr, "[VREG] F%d arg r%d: size=%d stackPos=%d\n",
+			        f->findex, i, r->size, r->stackPos);
+		}
 	}
 #endif
 	for(i=nargs;i<f->nregs;i++) {
@@ -3878,6 +3891,23 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		size += r->size;
 		size += hl_pad_size(size,r->t); // align local vars
 		r->stackPos = -size;
+		// DEBUG: Log vreg allocation for Function #16
+		#ifdef HL_JIT_ARM64
+		if (f->findex == 16) {
+			fprintf(stderr, "[VREG] F%d local r%d: size=%d stackPos=%d\n",
+			        f->findex, i, r->size, r->stackPos);
+			// CRITICAL: Check for suspicious positive values
+			if (r->stackPos > 0) {
+				fprintf(stderr, "[ERROR] POSITIVE stackPos detected! r%d stackPos=%d\n",
+				        i, r->stackPos);
+			}
+			// Check for values that would create huge offsets (>4095 * 8 = 32KB)
+			if (r->stackPos < -255 || r->stackPos > 255) {
+				fprintf(stderr, "[WARN] Large stackPos r%d=%d (requires 2-step addressing)\n",
+				        i, r->stackPos);
+			}
+		}
+		#endif
 	}
 #	ifdef HL_64
 	size += (-size) & 15; // align on 16 bytes
@@ -3886,7 +3916,11 @@ int hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #	endif
 	ctx->totalRegsSize = size;
 	jit_buf(ctx);
+#ifdef HL_JIT_ARM64
+	ctx->functionPos = ARM_BUF_POS();
+#else
 	ctx->functionPos = BUF_POS();
+#endif
 
 #ifdef HL_JIT_ARM64
 	// CRITICAL FIX: Set function pointer EARLY for eager JIT compilation
