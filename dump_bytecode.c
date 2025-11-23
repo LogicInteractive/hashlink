@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "src/hl.h"
-#include "src/code.h"
+#include "src/hlmodule.h"
 
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
