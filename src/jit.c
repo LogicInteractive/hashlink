@@ -595,13 +595,15 @@ static void jit_buf( jit_ctx *ctx ) {
 #define jit_exit() { hl_debug_break(); exit(-1); }
 #define jit_error(msg)	_jit_error(ctx,msg,__LINE__)
 
-// ARM64 error handling function
+// ARM64 error handling function (x86 has a different implementation in its own block)
+#ifndef HL_JIT_X86
 static void _jit_error( jit_ctx *ctx, const char *msg, int line ) {
 	printf("JIT ERROR at jit.c:%d - %s\n", line, msg);
 	printf("This operation is not yet implemented in the ARM64 JIT.\n");
 	printf("Status: 98/102 operations implemented (96%% complete)\n");
 	exit(1);
 }
+#endif
 
 // =====================================================================
 // ARM64 JIT Debug Helpers
@@ -769,31 +771,6 @@ static void restore_regs( jit_ctx *ctx ) {
 		p->holds = r;
 		p->lock = ctx->savedLocks[i];
 		if( r ) r->current = p;
-	}
-}
-
-static void jit_buf( jit_ctx *ctx ) {
-	if( BUF_POS() > ctx->bufSize - MAX_OP_SIZE ) {
-		int nsize = ctx->bufSize * 4 / 3;
-		unsigned char *nbuf;
-		int curpos;
-		if( nsize == 0 ) {
-			int i;
-			for(i=0;i<ctx->m->code->nfunctions;i++)
-				nsize += ctx->m->code->functions[i].nops;
-			nsize *= 4;
-		}
-		if( nsize < ctx->bufSize + MAX_OP_SIZE * 4 ) nsize = ctx->bufSize + MAX_OP_SIZE * 4;
-		curpos = BUF_POS();
-		nbuf = (unsigned char*)malloc(nsize);
-		if( nbuf == NULL ) ASSERT(nsize);
-		if( ctx->startBuf ) {
-			memcpy(nbuf,ctx->startBuf,curpos);
-			free(ctx->startBuf);
-		}
-		ctx->startBuf = nbuf;
-		ctx->buf.b = nbuf + curpos;
-		ctx->bufSize = nsize;
 	}
 }
 
@@ -3156,25 +3133,6 @@ static void *get_dynget( hl_type *t ) {
 	}
 }
 
-static vclosure *alloc_static_closure( jit_ctx *ctx, int fid ) {
-	hl_module *m = ctx->m;
-	vclosure *c = hl_malloc(&m->ctx.alloc,sizeof(vclosure));
-	int fidx = m->functions_indexes[fid];
-	c->hasValue = 0;
-	if( fidx >= m->code->nfunctions ) {
-		// native
-		c->t = m->code->natives[fidx - m->code->nfunctions].t;
-		c->fun = m->functions_ptrs[fid];
-		c->value = NULL;
-	} else {
-		c->t = m->code->functions[fidx].type;
-		c->fun = (void*)(int_val)fid;
-		c->value = ctx->closure_list;
-		ctx->closure_list = c;
-	}
-	return c;
-}
-
 static void make_dyn_cast( jit_ctx *ctx, vreg *dst, vreg *v ) {
 	int size;
 	preg p;
@@ -4367,11 +4325,12 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 #endif // !HL_JIT_ARM64
 
 			break;
-	
+
+#ifdef HL_JIT_ARM64
 	// ===== ARM64 Phase 1: Stack-Based Virtual Register System =====
 	// All vregs stored on stack at [X29 + stackPos]
 	// Temporary registers: X10 (primary), X11 (secondary), X12 (tertiary)
-	
+
 	#define LOAD_VREG(tmp_reg, vr) \
 		if (vr) { \
 			int _pos = (vr)->stackPos; \
@@ -4424,8 +4383,8 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 	
 	// Helper to define GET_REG for compatibility (but we won't use it)
 	#define GET_REG(vr) X10  // Always returns X10, shouldn't be used in Phase 1
-	
 
+#endif // HL_JIT_ARM64 (macros)
 
 #ifndef HL_JIT_ARM64
 	case OIncr:
@@ -4476,6 +4435,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			break;
 #endif // !HL_JIT_ARM64
 
+#ifdef HL_JIT_ARM64
 		case OBytes:
 			// dst = bytes constant pointer
 			if (dst) {
@@ -6353,6 +6313,11 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					get_func = hl_dyn_geti64;
 					break;
 				case HI32:
+					// CRITICAL FIX: On ARM64, HI32 may contain mistyped pointers.
+					// hl_dyn_geti returns only 32 bits, truncating pointers!
+					// Use hl_dyn_geti64 which returns 64 bits.
+					get_func = hl_dyn_geti64;
+					break;
 				case HUI16:
 				case HUI8:
 				case HBOOL:
@@ -6428,6 +6393,11 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 					set_func = hl_dyn_seti64;
 					break;
 				case HI32:
+					// CRITICAL FIX: On ARM64, HI32 may contain mistyped pointers.
+					// hl_dyn_seti takes only 32 bits, truncating pointers!
+					// Use hl_dyn_seti64 which stores 64 bits.
+					set_func = hl_dyn_seti64;
+					break;
 				case HUI16:
 				case HUI8:
 				case HBOOL:
@@ -6648,10 +6618,13 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		default:
 			jit_error(hl_op_name(o->op));
 			break;
+#endif // HL_JIT_ARM64 (ARM64 case statements)
 		}
 	}
 
+	#ifdef HL_JIT_ARM64
 	#undef GET_REG
+	#endif
 
 #ifdef HL_JIT_ARM64
 	// Patch jumps (conditional branches, etc.) - must be done per-function before ctx->jumps is cleared
