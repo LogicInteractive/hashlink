@@ -4548,13 +4548,36 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 		break;
 	case OField:
 		// dst = ra->field (load field from object)
+		// CRITICAL FIX: o->p3 is a FIELD INDEX, not a byte offset!
+		// We must use rt->fields_indexes to get the actual byte offset.
 		if (dst && ra) {
 			LOAD_VREG(X10, ra);  // Load object pointer
-			// Field offset stored in o->p3
-			int field_offset = o->p3 * HL_WSIZE;
-			if (field_offset >= 0 && field_offset < 32768) {
-				arm_ldr_imm(ctx, X10, X10, field_offset / 8, 3);  // Scaled offset
+
+			// Get the runtime field offset from the object type
+			int field_index = o->p3;
+			int field_offset;
+
+			if (ra->t->kind == HOBJ || ra->t->kind == HSTRUCT) {
+				// Use runtime type info to get correct byte offset
+				hl_runtime_obj *rt = hl_get_obj_rt(ra->t);
+				if (field_index < rt->nfields) {
+					field_offset = rt->fields_indexes[field_index];
+				} else {
+					fprintf(stderr, "[OField] F%d: field_index %d >= nfields %d\n",
+						f->findex, field_index, rt->nfields);
+					field_offset = field_index * HL_WSIZE;  // Fallback
+				}
 			} else {
+				// Non-object type - use legacy calculation
+				field_offset = field_index * HL_WSIZE;
+			}
+
+			// Load field value using byte offset
+			// For ARM64 scaled offset mode (size=3), divide by 8
+			if (field_offset % 8 == 0 && field_offset >= 0 && field_offset < 32768) {
+				arm_ldr_imm(ctx, X10, X10, field_offset / 8, 3);
+			} else {
+				// Unaligned or large offset - use register offset
 				arm_load_imm64(ctx, X11, field_offset);
 				arm_ldr_reg(ctx, X10, X10, X11, 3);
 			}
@@ -4564,19 +4587,37 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OSetField:
 		// dst->field = ra (store field to object)
+		// CRITICAL FIX: o->p2 is a FIELD INDEX, not a byte offset!
+		// We must use rt->fields_indexes to get the actual byte offset.
 		if (dst && ra) {
 			LOAD_VREG(X10, dst);  // Load object pointer
 			LOAD_VREG(X11, ra);   // Load value to store
-			// Field offset stored in o->p2
-			int field_offset = o->p2 * HL_WSIZE;
-			// DEBUG: Check for obviously wrong field offset
-			if (o->p2 > 100) {
-				fprintf(stderr, "[BUG!] OSetField F%d: p2=%d (field_offset=%d) - TOO LARGE!\n",
-				        f->findex, o->p2, field_offset);
-			}
-			if (field_offset >= 0 && field_offset < 32768) {
-				arm_str_imm(ctx, X11, X10, field_offset / 8, 3);  // Scaled offset
+
+			// Get the runtime field offset from the object type
+			int field_index = o->p2;
+			int field_offset;
+
+			if (dst->t->kind == HOBJ || dst->t->kind == HSTRUCT) {
+				// Use runtime type info to get correct byte offset
+				hl_runtime_obj *rt = hl_get_obj_rt(dst->t);
+				if (field_index < rt->nfields) {
+					field_offset = rt->fields_indexes[field_index];
+				} else {
+					fprintf(stderr, "[OSetField] F%d: field_index %d >= nfields %d\n",
+						f->findex, field_index, rt->nfields);
+					field_offset = field_index * HL_WSIZE;  // Fallback
+				}
 			} else {
+				// Non-object type - use legacy calculation
+				field_offset = field_index * HL_WSIZE;
+			}
+
+			// Store field value using byte offset
+			// For ARM64 scaled offset mode (size=3), divide by 8
+			if (field_offset % 8 == 0 && field_offset >= 0 && field_offset < 32768) {
+				arm_str_imm(ctx, X11, X10, field_offset / 8, 3);
+			} else {
+				// Unaligned or large offset - use register offset
 				arm_load_imm64(ctx, X12, field_offset);
 				arm_str_reg(ctx, X11, X10, X12, 3);
 			}
@@ -5440,13 +5481,34 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OGetThis:
 		// dst = this->field - load field from "this" object
-		// For Phase 1, treat similar to OField
-		// p2 is the field index
+		// CRITICAL FIX: o->p2 is a FIELD INDEX, not a byte offset!
+		// We must use rt->fields_indexes to get the actual byte offset.
 		if (dst) {
 			// Get "this" pointer from vreg 0 (convention: this is first parameter)
-			LOAD_VREG(X10, R(0));
-			int field_offset = o->p2 * HL_WSIZE;
-			if (field_offset >= 0 && field_offset < 32768) {
+			vreg *this_vreg = R(0);
+			LOAD_VREG(X10, this_vreg);
+
+			// Get the runtime field offset from the object type
+			int field_index = o->p2;
+			int field_offset;
+
+			if (this_vreg->t->kind == HOBJ || this_vreg->t->kind == HSTRUCT) {
+				// Use runtime type info to get correct byte offset
+				hl_runtime_obj *rt = hl_get_obj_rt(this_vreg->t);
+				if (field_index < rt->nfields) {
+					field_offset = rt->fields_indexes[field_index];
+				} else {
+					fprintf(stderr, "[OGetThis] F%d: field_index %d >= nfields %d\n",
+						f->findex, field_index, rt->nfields);
+					field_offset = field_index * HL_WSIZE;  // Fallback
+				}
+			} else {
+				// Non-object type - use legacy calculation
+				field_offset = field_index * HL_WSIZE;
+			}
+
+			// Load field value using byte offset
+			if (field_offset % 8 == 0 && field_offset >= 0 && field_offset < 32768) {
 				arm_ldr_imm(ctx, X10, X10, field_offset / 8, 3);
 			} else {
 				arm_load_imm64(ctx, X11, field_offset);
@@ -5458,13 +5520,35 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OSetThis:
 		// this->field = ra - store field to "this" object
-		// For Phase 1, treat similar to OSetField
+		// CRITICAL FIX: o->p2 is a FIELD INDEX, not a byte offset!
+		// We must use rt->fields_indexes to get the actual byte offset.
 		if (ra) {
 			// Get "this" pointer from vreg 0
-			LOAD_VREG(X10, R(0));
+			vreg *this_vreg = R(0);
+			LOAD_VREG(X10, this_vreg);
 			LOAD_VREG(X11, ra);
-			int field_offset = o->p2 * HL_WSIZE;
-			if (field_offset >= 0 && field_offset < 32768) {
+
+			// Get the runtime field offset from the object type
+			int field_index = o->p2;
+			int field_offset;
+
+			if (this_vreg->t->kind == HOBJ || this_vreg->t->kind == HSTRUCT) {
+				// Use runtime type info to get correct byte offset
+				hl_runtime_obj *rt = hl_get_obj_rt(this_vreg->t);
+				if (field_index < rt->nfields) {
+					field_offset = rt->fields_indexes[field_index];
+				} else {
+					fprintf(stderr, "[OSetThis] F%d: field_index %d >= nfields %d\n",
+						f->findex, field_index, rt->nfields);
+					field_offset = field_index * HL_WSIZE;  // Fallback
+				}
+			} else {
+				// Non-object type - use legacy calculation
+				field_offset = field_index * HL_WSIZE;
+			}
+
+			// Store field value using byte offset
+			if (field_offset % 8 == 0 && field_offset >= 0 && field_offset < 32768) {
 				arm_str_imm(ctx, X11, X10, field_offset / 8, 3);
 			} else {
 				arm_load_imm64(ctx, X12, field_offset);

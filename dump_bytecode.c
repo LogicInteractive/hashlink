@@ -62,5 +62,41 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	// Dump OField/OSetField opcodes to understand bytecode format
+	printf("\n=== FIELD ACCESS OPCODES ===\n");
+	for (int fi = 0; fi < code->nfunctions; fi++) {
+		hl_function *func = &code->functions[fi];
+		for (int oi = 0; oi < func->nops; oi++) {
+			hl_opcode *op = &func->ops[oi];
+			if (op->op == OField) {
+				// OField: p1=dst, p2=obj, p3=field_param
+				hl_type *obj_type = func->regs[op->p2];
+				printf("F%d op%d OField: dst=r%d obj=r%d(type=%d) p3=%d",
+					func->findex, oi, op->p1, op->p2, obj_type->kind, op->p3);
+				if (obj_type->kind == HOBJ || obj_type->kind == HSTRUCT) {
+					printf(" (obj has %d fields)", obj_type->obj->nfields);
+					if (op->p3 < obj_type->obj->nfields) {
+						printf(" field_name='%s'", obj_type->obj->fields[op->p3].name ?
+							(char*)obj_type->obj->fields[op->p3].name : "<null>");
+					}
+				}
+				printf("\n");
+			} else if (op->op == OSetField) {
+				// OSetField: p1=obj, p2=field_param, p3=src
+				hl_type *obj_type = func->regs[op->p1];
+				printf("F%d op%d OSetField: obj=r%d(type=%d) p2=%d src=r%d",
+					func->findex, oi, op->p1, obj_type->kind, op->p2, op->p3);
+				if (obj_type->kind == HOBJ || obj_type->kind == HSTRUCT) {
+					printf(" (obj has %d fields)", obj_type->obj->nfields);
+					if (op->p2 < obj_type->obj->nfields) {
+						printf(" field_name='%s'", obj_type->obj->fields[op->p2].name ?
+							(char*)obj_type->obj->fields[op->p2].name : "<null>");
+					}
+				}
+				printf("\n");
+			}
+		}
+	}
+
 	return 0;
 }
