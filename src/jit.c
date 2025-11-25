@@ -5520,7 +5520,7 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 
 	case OSetThis:
 		// this->field = ra - store field to "this" object
-		// CRITICAL FIX: o->p2 is a FIELD INDEX, not a byte offset!
+		// OSetThis operands: p1 = field_index, p2 = source register
 		// We must use rt->fields_indexes to get the actual byte offset.
 		if (ra) {
 			// Get "this" pointer from vreg 0
@@ -5529,7 +5529,8 @@ int_val hl_jit_function( jit_ctx *ctx, hl_module *m, hl_function *f ) {
 			LOAD_VREG(X11, ra);
 
 			// Get the runtime field offset from the object type
-			int field_index = o->p2;
+			// BUG FIX: Use o->p1 for field_index (not o->p2!)
+			int field_index = o->p1;
 			int field_offset;
 
 			if (this_vreg->t->kind == HOBJ || this_vreg->t->kind == HSTRUCT) {
